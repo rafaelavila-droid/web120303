@@ -128,7 +128,7 @@ function loadImage(src) {
 
 async function loadAssets() {
   try {
-    assets.map     = await loadImage(mapa.png");
+    assets.map     = await loadImage("mapa.png");
     assets.idle    = await loadImage("Idle.png");
     assets.run     = await loadImage("Run.png");
     assets.walk    = await loadImage("Walk.png");
@@ -474,3 +474,4 @@ function gameLoop() {
 updateHud();
 
 loadAssets();
+
