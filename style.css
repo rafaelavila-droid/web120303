@@ -1,0 +1,195 @@
+:root {
+    --bg1: #08111f;
+    --bg2: #16263d;
+    --glass: rgba(11, 18, 32, 0.82);
+    --glass-2: rgba(20, 30, 49, 0.9);
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #ebf2ff;
+    --muted: #9fb3d1;
+    --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--bg1), var(--bg2));
+  }
+  
+  .desktop-bg {
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(89, 208, 255, 0.14), transparent 20%),
+      radial-gradient(circle at 85% 15%, rgba(124, 92, 255, 0.16), transparent 24%),
+      linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: auto, auto, 26px 26px, 26px 26px;
+    pointer-events: none;
+  }
+  
+  .window-app {
+    position: relative;
+    z-index: 1;
+    width: min(1400px, calc(100vw - 32px));
+    height: min(860px, calc(100vh - 32px));
+    margin: 16px auto;
+    border-radius: 26px;
+    overflow: hidden;
+    background: var(--glass);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(16px);
+    display: grid;
+    grid-template-rows: 72px 1fr;
+  }
+  
+  .title-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 18px;
+    background: rgba(12, 19, 35, 0.95);
+    border-bottom: 1px solid var(--line);
+  }
+  
+  .title-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  
+  .red { background: #ff5f57; }
+  .yellow { background: #febc2e; }
+  .green { background: #28c840; }
+  
+  .title-text {
+    margin-left: 6px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .title-text strong {
+    font-size: 0.98rem;
+  }
+  
+  .title-text small {
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  
+  .top-hud {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  
+  .hud-item {
+    min-width: 100px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  
+  .hud-item span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.76rem;
+    margin-bottom: 4px;
+  }
+  
+  .app-body {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: 0;
+  }
+  
+  .sidebar {
+    padding: 18px;
+    background: rgba(14, 22, 39, 0.92);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .panel {
+    background: var(--glass-2);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 16px;
+  }
+  
+  .panel h2 {
+    font-size: 0.98rem;
+    margin-bottom: 10px;
+  }
+  
+  .panel p,
+  .panel li {
+    color: var(--muted);
+    line-height: 1.55;
+    font-size: 0.92rem;
+  }
+  
+  .panel ul {
+    padding-left: 18px;
+  }
+  
+  .game-area {
+    display: grid;
+    grid-template-rows: 54px 1fr;
+    min-width: 0;
+    min-height: 0;
+    background: linear-gradient(180deg, rgba(7,12,22,0.88), rgba(8,14,26,0.96));
+  }
+  
+  .game-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  
+  #messageBox {
+    color: #d7f7ff;
+  }
+  
+  #gameCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  
+  @media (max-width: 1100px) {
+    .app-body {
+      grid-template-columns: 1fr;
+    }
+  
+    .sidebar {
+      display: none;
+    }
+  }
