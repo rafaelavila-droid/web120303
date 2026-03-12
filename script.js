@@ -128,17 +128,17 @@ function loadImage(src) {
 
 async function loadAssets() {
   try {
-    assets.map     = await loadImage("assets/mapa.png");
-    assets.idle    = await loadImage("assets/Idle.png");
-    assets.run     = await loadImage("assets/Run.png");
-    assets.walk    = await loadImage("assets/Walk.png");
-    assets.jump    = await loadImage("assets/Jump.png");
-    assets.attack1 = await loadImage("assets/Attack_1.png");
-    assets.attack2 = await loadImage("assets/Attack_2.png");
-    assets.attack3 = await loadImage("assets/Attack_3.png");
-    assets.hurt    = await loadImage("assets/Hurt.png");
-    assets.dead    = await loadImage("assets/Dead.png");
-    assets.shield  = await loadImage("assets/Shield.png");
+    assets.map     = await loadImage(mapa.png");
+    assets.idle    = await loadImage("Idle.png");
+    assets.run     = await loadImage("Run.png");
+    assets.walk    = await loadImage("Walk.png");
+    assets.jump    = await loadImage("Jump.png");
+    assets.attack1 = await loadImage("Attack_1.png");
+    assets.attack2 = await loadImage("Attack_2.png");
+    assets.attack3 = await loadImage("Attack_3.png");
+    assets.hurt    = await loadImage("Hurt.png");
+    assets.dead    = await loadImage("Dead.png");
+    assets.shield  = await loadImage("Shield.png");
 
     gameReady = true;
     messageBox.textContent = "Assets carregados. Jogo rodando.";
@@ -472,4 +472,5 @@ function gameLoop() {
 }
 
 updateHud();
+
 loadAssets();
