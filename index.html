@@ -3,66 +3,118 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shinobi Mini Game</title>
+  <meta name="theme-color" content="#0a1018" />
+  <title>Shinobi Fighter</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="desktop-bg"></div>
+  <main class="app">
+    <section id="menuScreen" class="screen active menu-screen">
+      <div class="menu-overlay"></div>
+      <div class="scene-grid"></div>
 
-  <main class="window-app">
-    <header class="title-bar">
-      <div class="title-left">
-        <span class="dot red"></span>
-        <span class="dot yellow"></span>
-        <span class="dot green"></span>
-        <div class="title-text">
-          <strong>shinobi_game.exe</strong>
-          <small>mini jogo dentro do site</small>
-        </div>
-      </div>
+      <div class="menu-shell">
+        <section class="menu-story">
+          <h1 class="game-title">
+            <span>Shadow</span>
+            <span>Protocol</span>
+          </h1>
+          <div class="menu-subtitle">SHINOBI FIGHTER</div>
+          <div class="press-start hero-start">APERTE QUALQUER BOTAO PARA INICIAR</div>
+        </section>
 
-      <div class="top-hud">
-        <div class="hud-item">
-          <span>Vida</span>
-          <strong id="lifeLabel">3</strong>
-        </div>
-        <div class="hud-item">
-          <span>Moedas</span>
-          <strong id="coinLabel">0</strong>
-        </div>
-        <div class="hud-item">
-          <span>Estado</span>
-          <strong id="stateLabel">Idle</strong>
-        </div>
-      </div>
-    </header>
-
-    <section class="app-body">
-      <aside class="sidebar">
-        <div class="panel">
-          <h2>Controles</h2>
-          <ul>
-            <li>A / D ou ← / → para andar</li>
-            <li>W / Espaço / ↑ para pular</li>
-            <li>J para ataque 1</li>
-            <li>K para ataque 2</li>
-            <li>L para ataque 3</li>
-            <li>R para reiniciar</li>
-          </ul>
-        </div>
-      </aside>
-
-      <section class="game-area">
-        <div class="game-topbar">
-          <div>
-            <strong>Mapa: </strong>
-            <span>assets/mapa.png</span>
+        <section class="menu-corner-tip panel-surface">
+          <div class="tip-panel">
+            <div class="tip-label">Controles</div>
+            <p>A/D andar</p>
+            <p>Shift correr</p>
+            <p>W ou Espaco pular</p>
+            <p>J/K/L atacar</p>
+            <p>S bloquear</p>
           </div>
-          <div id="messageBox">Carregando jogo...</div>
+        </section>
+      </div>
+    </section>
+
+    <section id="selectScreen" class="screen select-screen">
+      <div class="select-overlay"></div>
+
+      <div class="select-shell">
+
+        <section class="select-stage">
+          <article class="fighter-showcase left panel-surface">
+            <div class="showcase-label">1P</div>
+            <canvas id="playerPreviewCanvas" width="420" height="420"></canvas>
+            <div class="showcase-footer">
+              <div id="playerSelectName" class="showcase-name">ESCOLHA</div>
+              <div id="playerSelectDesc" class="showcase-desc">Selecione seu lutador para ver os detalhes.</div>
+              <div id="playerSelectStats" class="showcase-stats"></div>
+            </div>
+          </article>
+
+          <div class="select-center-info">
+            <div class="versus-mark">VS</div>
+          </div>
+
+          <article class="fighter-showcase right panel-surface">
+            <div class="showcase-label cpu">CPU</div>
+            <canvas id="enemyPreviewCanvas" width="420" height="420"></canvas>
+            <div class="showcase-footer">
+              <div id="enemySelectName" class="showcase-name">RIVAL</div>
+              <div id="enemySelectDesc" class="showcase-desc">Oponente definido automaticamente para o confronto.</div>
+              <div id="enemySelectStats" class="showcase-stats"></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="select-bottom-panel panel-surface">
+
+          <div id="characterGrid" class="character-grid arcade-grid"></div>
+          
+          <div class="select-actions">
+            <button id="backToMenuBtn" class="btn btn-ghost select-action-btn select-action-secondary">Voltar</button>
+            <button id="confirmSelectionBtn" class="btn btn-primary select-action-btn select-action-primary" disabled>Confirmar combate</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="fightScreen" class="screen">
+      <div class="fight-layout">
+        <div class="canvas-wrap">
+          <canvas id="gameCanvas" width="1280" height="720"></canvas>
         </div>
 
-        <canvas id="gameCanvas" width="960" height="540"></canvas>
-      </section>
+        <header class="fight-topbar panel-surface">
+          <div class="fighter-hud fighter-hud-left">
+            <div class="hud-meta">
+              <span class="hud-role">Jogador</span>
+              <strong class="top-name left" id="playerNameLabel">PLAYER</strong>
+            </div>
+            <div class="hud-bar-track">
+              <div id="playerHealthBar" class="hud-bar-fill player"></div>
+            </div>
+            <div id="playerHealthText" class="hud-health-text">220 / 220</div>
+          </div>
+
+          <div class="top-center">
+            <div id="roundLabel" class="round-label">ROUND 1</div>
+            <div id="scoreLabel" class="score-label">0 x 0</div>
+            <div class="center-chip">Esc para menu</div>
+          </div>
+
+          <div class="fighter-hud fighter-hud-right">
+            <div class="hud-meta">
+              <span class="hud-role">CPU</span>
+              <strong class="top-name right" id="enemyNameLabel">ENEMY</strong>
+            </div>
+            <div class="hud-bar-track">
+              <div id="enemyHealthBar" class="hud-bar-fill enemy"></div>
+            </div>
+            <div id="enemyHealthText" class="hud-health-text">220 / 220</div>
+          </div>
+        </header>
+      </div>
     </section>
   </main>
 
