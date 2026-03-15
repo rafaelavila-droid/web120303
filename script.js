@@ -1536,10 +1536,22 @@ function runCpuSelectionRoulette() {
     keys[key] = false;
   }
 
+  function isEditableTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  }
+
   document.addEventListener("keydown", handleGameKeyDown, true);
   window.addEventListener("keydown", handleGameKeyDown);
   document.addEventListener("keyup", handleGameKeyUp, true);
   window.addEventListener("keyup", handleGameKeyUp);
+
+  ["copy", "cut", "paste", "selectstart"].forEach((eventName) => {
+    document.addEventListener(eventName, (event) => {
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+    });
+  });
 
   window.addEventListener("blur", () => {
     clearKeys();
