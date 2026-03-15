@@ -31,6 +31,19 @@ const playerHealthBar = document.getElementById("playerHealthBar");
 const enemyHealthBar = document.getElementById("enemyHealthBar");
 const playerHealthText = document.getElementById("playerHealthText");
 const enemyHealthText = document.getElementById("enemyHealthText");
+const playerPortraitCanvas = document.getElementById("playerPortraitCanvas");
+const enemyPortraitCanvas = document.getElementById("enemyPortraitCanvas");
+const cpuShowcase = document.querySelector(".fighter-showcase.right");
+const centerChip = document.querySelector(".center-chip");
+const mobileControls = document.getElementById("mobileControls");
+const mobileJoystickArea = document.getElementById("mobileJoystickArea");
+const mobileJoystickThumb = document.getElementById("mobileJoystickThumb");
+const mobileJumpButton = document.getElementById("mobileJumpButton");
+const mobileAttack1Button = document.getElementById("mobileAttack1Button");
+const mobileAttack2Button = document.getElementById("mobileAttack2Button");
+const mobileAttack3Button = document.getElementById("mobileAttack3Button");
+const mobileBlockButton = document.getElementById("mobileBlockButton");
+const mobileMenuButton = document.getElementById("mobileMenuButton");
 
   const LOGICAL_WIDTH = 1280;
   const LOGICAL_HEIGHT = 720;
@@ -49,8 +62,8 @@ const enemyHealthText = document.getElementById("enemyHealthText");
   const AIR_ACCEL = 0.14;
   const GROUND_FRICTION = 0.80;
   const AIR_FRICTION = 0.97;
-  const JUMP_FORCE = -9.8;
-  const MAX_FALL_SPEED = 10;
+  const JUMP_FORCE = -13.8;
+  const MAX_FALL_SPEED = 11;
   const FLOOR_Y = 585;
 
   const MAX_HEALTH = 220;
@@ -60,20 +73,47 @@ const enemyHealthText = document.getElementById("enemyHealthText");
   const POST_DEATH_MATCH_DELAY_FRAMES = 92;
   const POST_MATCH_RETURN_DELAY_FRAMES = 150;
   const ROUND_END_AUDIO_FALLBACK_FRAMES = 120;
+  const ROUND_INTRO_AUDIO_FALLBACK_FRAMES = 165;
 
   const keys = {};
   const assets = {};
   const roundKoAudio = new Audio("ko.mp3");
   const themeAudio = new Audio("theme.mp3");
+  const round1FightAudio = new Audio("round1-fight.mp3");
+  const round2FightAudio = new Audio("round2-fight.mp3");
+  const round3FightAudio = new Audio("round3-fight.mp3");
   const swordSlashAudioPool = Array.from({ length: 4 }, () => new Audio("sword-slash.mp3"));
+  const mageFlameAudioPool = Array.from({ length: 4 }, () => new Audio("flames-effect.mp3"));
+  const selectClickAudioPool = Array.from({ length: 8 }, () => new Audio("select-click.mp3"));
+  const ROUND_INTRO_VOLUME = 0.42;
+  const ROUND1_INTRO_VOLUME = 0.72;
   roundKoAudio.preload = "auto";
   roundKoAudio.volume = 0.2;
   themeAudio.preload = "auto";
   themeAudio.loop = true;
   themeAudio.volume = 0.22;
+  [round1FightAudio, round2FightAudio, round3FightAudio].forEach((audio) => {
+    audio.preload = "auto";
+    audio.volume = ROUND_INTRO_VOLUME;
+    audio.addEventListener("ended", () => {
+      if (roundIntro.active && getRoundIntroAudio(roundIntro.round) === audio) {
+        roundIntro.timer = 0;
+        roundIntro.audioStarted = false;
+      }
+    });
+  });
+  round1FightAudio.volume = ROUND1_INTRO_VOLUME;
   swordSlashAudioPool.forEach((audio) => {
     audio.preload = "auto";
     audio.volume = 0.3;
+  });
+  mageFlameAudioPool.forEach((audio) => {
+    audio.preload = "auto";
+    audio.volume = 0.34;
+  });
+  selectClickAudioPool.forEach((audio) => {
+    audio.preload = "auto";
+    audio.volume = 0.34;
   });
 
   let gameReady = false;
@@ -84,6 +124,15 @@ const enemyHealthText = document.getElementById("enemyHealthText");
   let selectedCharacter = null;
   let matchReturnTimer = 0;
   let previewAnimationTime = 0;
+  let cpuRouletteStep = 0;
+  let selectClickAudioIndex = 0;
+
+  const cpuSelection = {
+    previewId: null,
+    lockedId: null,
+    spinning: false,
+    timerId: null
+  };
 
   const gameState = {
     screen: "menu",
@@ -103,6 +152,34 @@ const enemyHealthText = document.getElementById("enemyHealthText");
   const roundTransition = {
     active: false,
     timer: 0
+  };
+
+  const roundIntro = {
+    active: false,
+    timer: 0,
+    round: 1,
+    audioStarted: false
+  };
+
+  const mobileMode = {
+    active: false
+  };
+
+  const inputMode = {
+    forceDesktop: false,
+    lastPointerType: "mouse"
+  };
+
+  const audioState = {
+    userActivated: false
+  };
+
+  const touchControls = {
+    moveX: 0,
+    moveY: 0,
+    run: false,
+    blockPressed: false,
+    joystickPointerId: null
   };
 
   const characters = [
@@ -134,7 +211,7 @@ const enemyHealthText = document.getElementById("enemyHealthText");
         attack3: { frames: 3, speed: 0.13 },
         hurt: { frames: 2, speed: 0.12 },
         dead: { frames: 3, speed: 0.09 },
-        block: { frames: 8, speed: 0.14 }
+        block: { frames: 2, speed: 0, holdFrame: 1 }
       }
     },
     {
@@ -165,7 +242,69 @@ const enemyHealthText = document.getElementById("enemyHealthText");
         attack3: { frames: 5, speed: 0.15 },
         hurt: { frames: 3, speed: 0.12 },
         dead: { frames: 6, speed: 0.09 },
-        block: { frames: 6, speed: 0.12 }
+        block: { frames: 6, speed: 0, holdFrame: 0 }
+      }
+    },
+    {
+      id: "vermilion",
+      name: "Vermilion",
+      description: "Espadachim carmesim com golpes precisos e postura agressiva.",
+      stats: { power: 8, speed: 7, defense: 6 },
+      preview: "VermilionIdle.png",
+      sprites: {
+        idle: "VermilionIdle.png",
+        walk: "VermilionWalk.png",
+        run: "VermilionRun.png",
+        jump: "VermilionJump.png",
+        attack1: "VermilionAttack_1.png",
+        attack2: "VermilionAttack_2.png",
+        attack3: "VermilionAttack_3.png",
+        hurt: "VermilionHurt.png",
+        dead: "VermilionDead.png",
+        block: "VermilionShield.png"
+      },
+      anim: {
+        idle: { frames: 6, speed: 0.12 },
+        walk: { frames: 8, speed: 0.16 },
+        run: { frames: 8, speed: 0.22 },
+        jump: { frames: 12, speed: 0.18 },
+        attack1: { frames: 6, speed: 0.18 },
+        attack2: { frames: 5, speed: 0.16 },
+        attack3: { frames: 3, speed: 0.13 },
+        hurt: { frames: 2, speed: 0.12 },
+        dead: { frames: 3, speed: 0.09 },
+        block: { frames: 2, speed: 0, holdFrame: 1 }
+      }
+    },
+    {
+      id: "arcanist",
+      name: "Arcanist",
+      description: "Maga de fogo de medio alcance, com rajadas e projeteis arcanos.",
+      stats: { power: 7, speed: 6, defense: 5 },
+      preview: "ArcanistIdle.png",
+      sprites: {
+        idle: "ArcanistIdle.png",
+        walk: "ArcanistWalk.png",
+        run: "ArcanistRun.png",
+        jump: "ArcanistJump.png",
+        attack1: "ArcanistAttack_1.png",
+        attack2: "ArcanistFireball.png",
+        attack3: "ArcanistFlameJet.png",
+        hurt: "ArcanistHurt.png",
+        dead: "ArcanistDead.png",
+        block: "ArcanistShield.png"
+      },
+      anim: {
+        idle: { frames: 7, speed: 0.12 },
+        walk: { frames: 6, speed: 0.14 },
+        run: { frames: 8, speed: 0.18 },
+        jump: { frames: 9, speed: 0.16 },
+        attack1: { frames: 4, speed: 0.16 },
+        attack2: { frames: 8, speed: 0.15 },
+        attack3: { frames: 14, speed: 0.18 },
+        hurt: { frames: 3, speed: 0.12 },
+        dead: { frames: 6, speed: 0.09 },
+        block: { frames: 6, speed: 0, holdFrame: 0 }
       }
     }
   ];
@@ -207,11 +346,14 @@ const stage = {
       name: "",
       spriteSet: null,
       animSet: null,
+      characterData: null,
       aiControlled: false,
       aiState: "idle",
       aiDecisionTimer: 0,
       aiActionTimer: 0,
       aiAttackCooldown: 0,
+      aiJumpCooldown: 0,
+      aiMoveSpeed: 0,
       aiStrafeBias: 0
     };
   }
@@ -220,6 +362,16 @@ const stage = {
   const enemy = createFighter();
 
   function createAttackData(type, owner) {
+    if (owner.characterId === "arcanist") {
+      if (type === "attack1") {
+        return { type, total: 28, activeStart: 10, activeEnd: 14, damage: 9, knockback: 3.2, range: 84 };
+      }
+      if (type === "attack2") {
+        return { type, total: 52, activeStart: 16, activeEnd: 24, damage: 13, knockback: 4.0, range: 116 };
+      }
+      return { type, total: 76, activeStart: 20, activeEnd: 38, damage: 18, knockback: 5.0, range: 138 };
+    }
+
     const isPlayer = owner === player;
 
     if (isPlayer) {
@@ -242,13 +394,26 @@ const stage = {
   }
 
 function setScreen(name) {
+  if (name !== "select") {
+    stopCpuRoulette(name === "menu");
+  } else {
+    cpuSelection.lockedId = null;
+    cpuSelection.previewId = null;
+    syncSelectionActions();
+    syncSelectionCardStates();
+  }
+
   gameState.screen = name;
   clearKeys();
   stopRoundKoAudio();
+  stopRoundIntroAudio();
+  resetRoundIntro();
   syncBackgroundMusic();
   menuScreen.classList.toggle("active", name === "menu");
   selectScreen.classList.toggle("active", name === "select");
   fightScreen.classList.toggle("active", name === "fight");
+  syncMobileUi();
+  focusGameSurface();
 }
 
 function updateUI() {
@@ -272,6 +437,66 @@ function stopRoundKoAudio() {
   } catch {}
 }
 
+function getRoundIntroAudio(round) {
+  if (round >= 3) return round3FightAudio;
+  if (round === 2) return round2FightAudio;
+  return round1FightAudio;
+}
+
+function stopRoundIntroAudio() {
+  [round1FightAudio, round2FightAudio, round3FightAudio].forEach((audio) => {
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {}
+  });
+}
+
+function attemptPlayAudio(audio, onBlocked = null) {
+  if (!audio) return;
+
+  try {
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        if (onBlocked) onBlocked();
+      });
+    }
+  } catch {
+    if (onBlocked) onBlocked();
+  }
+}
+
+function focusGameSurface() {
+  const screenToFocus =
+    gameState.screen === "fight"
+      ? fightScreen
+      : gameState.screen === "select"
+        ? selectScreen
+        : menuScreen;
+
+  try {
+    window.focus();
+  } catch {}
+
+  try {
+    screenToFocus?.focus({ preventScroll: true });
+  } catch {}
+
+  try {
+    document.body?.focus({ preventScroll: true });
+  } catch {}
+}
+
+function registerUserInteraction() {
+  audioState.userActivated = true;
+  focusGameSurface();
+
+  if (gameState.screen === "menu" || gameState.screen === "select") {
+    syncBackgroundMusic();
+  }
+}
+
 function syncBackgroundMusic() {
   const shouldPlay = gameState.screen === "menu" || gameState.screen === "select";
 
@@ -281,10 +506,7 @@ function syncBackgroundMusic() {
       return;
     }
 
-    const playPromise = themeAudio.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {});
-    }
+    attemptPlayAudio(themeAudio);
   } catch {}
 }
 
@@ -292,11 +514,27 @@ function playRoundKoAudio() {
   try {
     roundKoAudio.pause();
     roundKoAudio.currentTime = 0;
-    const playPromise = roundKoAudio.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {});
-    }
+    attemptPlayAudio(roundKoAudio);
   } catch {}
+}
+
+function playRoundIntroAudio(round) {
+  const audio = getRoundIntroAudio(round);
+  if (!audio) return false;
+
+  stopRoundIntroAudio();
+
+  try {
+    audio.currentTime = 0;
+    attemptPlayAudio(audio, () => {
+      if (roundIntro.active && getRoundIntroAudio(roundIntro.round) === audio) {
+        roundIntro.audioStarted = false;
+      }
+    });
+    return true;
+  } catch {}
+
+  return false;
 }
 
 function playSwordSlashAudio() {
@@ -308,10 +546,33 @@ function playSwordSlashAudio() {
 
   try {
     availableAudio.currentTime = 0;
-    const playPromise = availableAudio.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {});
-    }
+    attemptPlayAudio(availableAudio);
+  } catch {}
+}
+
+function playMageFlameAudio() {
+  const availableAudio =
+    mageFlameAudioPool.find((audio) => audio.paused || audio.ended) ||
+    mageFlameAudioPool[0];
+
+  if (!availableAudio) return;
+
+  try {
+    availableAudio.currentTime = 0;
+    attemptPlayAudio(availableAudio);
+  } catch {}
+}
+
+function playSelectClickAudio() {
+  if (!selectClickAudioPool.length) return;
+
+  const availableAudio = selectClickAudioPool[selectClickAudioIndex % selectClickAudioPool.length];
+  selectClickAudioIndex = (selectClickAudioIndex + 1) % selectClickAudioPool.length;
+
+  try {
+    availableAudio.pause();
+    availableAudio.currentTime = 0;
+    attemptPlayAudio(availableAudio);
   } catch {}
 }
 
@@ -321,25 +582,380 @@ function getRoundKoDelayFrames() {
   return Math.max(ROUND_END_AUDIO_FALLBACK_FRAMES, fromAudio);
 }
 
+function getRoundIntroDelayFrames(round) {
+  const audio = getRoundIntroAudio(round);
+  const duration = audio && Number.isFinite(audio.duration) ? audio.duration : 0;
+  const fromAudio = duration > 0 ? Math.ceil(duration * 60) : 0;
+  return fromAudio > 0 ? fromAudio + 2 : ROUND_INTRO_AUDIO_FALLBACK_FRAMES;
+}
+
 function resetRoundTransition() {
   roundTransition.active = false;
   roundTransition.timer = 0;
+}
+
+function resetRoundIntro() {
+  roundIntro.active = false;
+  roundIntro.timer = 0;
+  roundIntro.round = gameState.round;
+  roundIntro.audioStarted = false;
+}
+
+function beginRoundIntro() {
+  roundIntro.active = true;
+  roundIntro.round = gameState.round;
+  roundIntro.timer = getRoundIntroDelayFrames(gameState.round);
+  roundIntro.audioStarted = false;
+  clearKeys();
+  roundIntro.audioStarted = playRoundIntroAudio(gameState.round);
+}
+
+function isLikelyMobileDevice() {
+  const userAgent = navigator.userAgent || navigator.vendor || "";
+  return /android|iphone|ipad|ipod|mobile/i.test(userAgent);
+}
+
+function shouldForceDesktopModeForKey(key) {
+  return [
+    "a",
+    "d",
+    "w",
+    "s",
+    "j",
+    "k",
+    "l",
+    " ",
+    "shift",
+    "arrowup",
+    "arrowdown",
+    "arrowleft",
+    "arrowright",
+    "escape",
+    "enter"
+  ].includes(key);
+}
+
+function isMobileViewport() {
+  const hasTouch = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
+  const compactViewport =
+    window.innerWidth <= 1024 ||
+    window.innerHeight <= 820 ||
+    Math.min(window.innerWidth, window.innerHeight) <= 768;
+
+  if (!hasTouch || !compactViewport) {
+    return false;
+  }
+
+  if (inputMode.forceDesktop) {
+    return false;
+  }
+
+  return isLikelyMobileDevice() || inputMode.lastPointerType === "touch";
+}
+
+function isMobileFightControlsEnabled() {
+  return mobileMode.active && gameState.screen === "fight";
+}
+
+function updateJoystickVisual() {
+  if (!mobileJoystickThumb || !mobileJoystickArea) return;
+
+  const limit = Math.min(mobileJoystickArea.clientWidth, mobileJoystickArea.clientHeight) * 0.24;
+  const x = touchControls.moveX * limit;
+  const y = touchControls.moveY * limit;
+  mobileJoystickThumb.style.transform = `translate(${x}px, ${y}px)`;
+  mobileJoystickArea.classList.toggle("active", touchControls.joystickPointerId !== null);
+}
+
+function resetTouchControls() {
+  touchControls.moveX = 0;
+  touchControls.moveY = 0;
+  touchControls.run = false;
+  touchControls.blockPressed = false;
+  touchControls.joystickPointerId = null;
+  updateJoystickVisual();
+  [
+    mobileJumpButton,
+    mobileAttack1Button,
+    mobileAttack2Button,
+    mobileAttack3Button,
+    mobileBlockButton,
+    mobileMenuButton
+  ].forEach((button) => button?.classList.remove("is-pressed"));
+}
+
+function syncMobileUi() {
+  mobileMode.active = isMobileViewport();
+  document.body.classList.toggle("mobile-device", mobileMode.active);
+  document.body.classList.toggle("fight-touch-active", mobileMode.active && gameState.screen === "fight");
+
+  if (mobileControls) {
+    const visible = mobileMode.active && gameState.screen === "fight";
+    mobileControls.classList.toggle("mobile-visible", visible);
+    mobileControls.setAttribute("aria-hidden", visible ? "false" : "true");
+  }
+
+  if (centerChip) {
+    centerChip.textContent = mobileMode.active ? "Menu no botao" : "Esc para menu";
+  }
+
+  if (!mobileMode.active) {
+    resetTouchControls();
+  }
+}
+
+function updateTouchJoystickFromPointer(clientX, clientY) {
+  if (!mobileJoystickArea) return;
+
+  const rect = mobileJoystickArea.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const limit = Math.min(rect.width, rect.height) * 0.24;
+  let dx = clientX - centerX;
+  let dy = clientY - centerY;
+  const distance = Math.hypot(dx, dy);
+
+  if (distance > limit && distance > 0) {
+    const scale = limit / distance;
+    dx *= scale;
+    dy *= scale;
+  }
+
+  touchControls.moveX = Math.max(-1, Math.min(1, dx / limit));
+  touchControls.moveY = Math.max(-1, Math.min(1, dy / limit));
+  touchControls.run = Math.hypot(touchControls.moveX, touchControls.moveY) > 0.72;
+  updateJoystickVisual();
+}
+
+function getPlayerInputState() {
+  const touchLeft = isMobileFightControlsEnabled() && touchControls.moveX < -0.2;
+  const touchRight = isMobileFightControlsEnabled() && touchControls.moveX > 0.2;
+  const touchRun = isMobileFightControlsEnabled() && touchControls.run;
+
+  return {
+    left: keys["a"] || keys["arrowleft"] || touchLeft,
+    right: keys["d"] || keys["arrowright"] || touchRight,
+    running: keys["shift"] || touchRun
+  };
+}
+
+function canUseTouchCombatAction() {
+  return isMobileFightControlsEnabled() && !roundOver && !matchOver && !deathFlow.active && !roundIntro.active;
+}
+
+function triggerTouchCombatAction(action) {
+  if (action === "menu") {
+    if (!isMobileFightControlsEnabled()) return;
+    playSelectClickAudio();
+    setScreen("menu");
+    return;
+  }
+
+  if (!canUseTouchCombatAction()) return;
+
+  if (action === "jump") {
+    triggerPlayerJump();
+    return;
+  }
+
+  if (touchControls.blockPressed) return;
+
+  if (action === "attack1" && canAttack(player)) startAttack(player, "attack1");
+  if (action === "attack2" && canAttack(player)) startAttack(player, "attack2");
+  if (action === "attack3" && canAttack(player)) startAttack(player, "attack3");
 }
 
 function clearKeys() {
   Object.keys(keys).forEach((key) => {
     keys[key] = false;
   });
+
+  resetTouchControls();
+}
+
+function getCharacterById(id) {
+  return characters.find((char) => char.id === id) || null;
+}
+
+function getCpuCandidateRoster() {
+  return characters;
+}
+
+function getCpuSelectableCharacters() {
+  return characters.filter((char) => char.id !== selectedCharacterId);
+}
+
+function syncSelectionCardStates() {
+  const cpuPreviewId = getCpuPreviewCharacter()?.id || null;
+
+  document.querySelectorAll(".character-card").forEach((card) => {
+    const isSelected = card.dataset.id === selectedCharacterId;
+    const isCpuPreview = cpuPreviewId && card.dataset.id === cpuPreviewId;
+
+    card.classList.toggle("selected", isSelected);
+    card.classList.toggle("cpu-preview", Boolean(isCpuPreview && !isSelected));
+  });
+
+  if (characterGrid) {
+    characterGrid.classList.toggle("roulette-active", cpuSelection.spinning);
+  }
+
+  if (cpuShowcase) {
+    cpuShowcase.classList.toggle("cpu-roulette", cpuSelection.spinning);
+  }
+}
+
+function syncSelectionActions() {
+  if (confirmSelectionBtn) {
+    confirmSelectionBtn.disabled = !selectedCharacter || cpuSelection.spinning;
+  }
+
+  if (backToMenuBtn) {
+    backToMenuBtn.disabled = cpuSelection.spinning;
+  }
+}
+
+function stopCpuRoulette(clearLocked = false) {
+  if (cpuSelection.timerId) {
+    clearTimeout(cpuSelection.timerId);
+    cpuSelection.timerId = null;
+  }
+
+  cpuSelection.spinning = false;
+  cpuSelection.previewId = null;
+  cpuRouletteStep = 0;
+
+  if (clearLocked) {
+    cpuSelection.lockedId = null;
+  }
+
+  syncSelectionActions();
+  syncSelectionCardStates();
+}
+
+function applySelectedCharacter(char, playAudio = false) {
+  if (!char || cpuSelection.spinning) return;
+
+  if (playAudio) {
+    playSelectClickAudio();
+  }
+
+  selectedCharacter = char;
+  selectedCharacterId = char.id;
+  cpuSelection.lockedId = null;
+  cpuSelection.previewId = null;
+  syncSelectionActions();
+  syncSelectionCardStates();
+  updateCharacterSelectShowcase();
 }
 
 function renderStatChips(container, stats) {
-  if (!container || !stats) return;
+  if (!container) return;
+  if (!stats) {
+    container.innerHTML = "";
+    return;
+  }
 
   container.innerHTML = `
     <span>Poder ${stats.power}</span>
     <span>Velocidade ${stats.speed}</span>
     <span>Defesa ${stats.defense}</span>
   `;
+}
+
+function getPortraitFrame(char) {
+  switch (char?.id) {
+    case "specter":
+      return { zoom: 2.4, offsetX: -8, offsetY: -26 };
+    case "arcanist":
+      return { zoom: 2.2, offsetX: 8, offsetY: -20 };
+    case "vermilion":
+      return { zoom: 2.05, offsetX: 6, offsetY: -22 };
+    case "shinobi":
+    default:
+      return { zoom: 2.05, offsetX: 6, offsetY: -22 };
+  }
+}
+
+function drawHudPortrait(canvasEl, char, facing = 1) {
+  if (!canvasEl) return;
+
+  const pctx = canvasEl.getContext("2d");
+  pctx.imageSmoothingEnabled = false;
+  pctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+  const radius = 22;
+  pctx.fillStyle = "rgba(5, 12, 20, 0.9)";
+  pctx.beginPath();
+  pctx.roundRect(2, 2, canvasEl.width - 4, canvasEl.height - 4, radius);
+  pctx.fill();
+
+  const frameGrad = pctx.createLinearGradient(0, 0, canvasEl.width, canvasEl.height);
+  frameGrad.addColorStop(0, "rgba(255, 241, 201, 0.8)");
+  frameGrad.addColorStop(1, "rgba(247, 185, 85, 0.24)");
+  pctx.strokeStyle = frameGrad;
+  pctx.lineWidth = 2;
+  pctx.beginPath();
+  pctx.roundRect(3, 3, canvasEl.width - 6, canvasEl.height - 6, radius - 2);
+  pctx.stroke();
+
+  const bgGrad = pctx.createRadialGradient(
+    canvasEl.width / 2,
+    canvasEl.height / 2 - 12,
+    10,
+    canvasEl.width / 2,
+    canvasEl.height / 2 - 10,
+    canvasEl.width * 0.62
+  );
+  bgGrad.addColorStop(0, "rgba(110, 215, 255, 0.28)");
+  bgGrad.addColorStop(1, "rgba(110, 215, 255, 0)");
+  pctx.fillStyle = bgGrad;
+  pctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+
+  if (!char) return;
+
+  const img = assets[char.preview];
+  const idleAnim = char.anim?.idle;
+  if (!img || !idleAnim) return;
+
+  const frameMeta = getAnimFrameMeta(idleAnim, idleAnim.holdFrame ?? 0);
+  const portraitFrame = getPortraitFrame(char);
+  const clipX = 4;
+  const clipY = 4;
+  const clipW = canvasEl.width - 8;
+  const clipH = canvasEl.height - 8;
+  const baseScale = Math.max(clipW / frameMeta.sw, clipH / frameMeta.sh);
+  const scale = baseScale * portraitFrame.zoom;
+  const destW = frameMeta.sw * scale;
+  const destH = frameMeta.sh * scale;
+  const destX = (canvasEl.width - destW) / 2 + portraitFrame.offsetX;
+  const destY = (canvasEl.height - destH) / 2 + portraitFrame.offsetY;
+
+  pctx.save();
+  pctx.beginPath();
+  pctx.roundRect(4, 4, canvasEl.width - 8, canvasEl.height - 8, radius - 2);
+  pctx.clip();
+  if (facing === -1) {
+    pctx.translate(canvasEl.width, 0);
+    pctx.scale(-1, 1);
+  }
+  pctx.drawImage(
+    img,
+    frameMeta.sx,
+    frameMeta.sy,
+    frameMeta.sw,
+    frameMeta.sh,
+    destX,
+    destY,
+    destW,
+    destH
+  );
+  pctx.restore();
+}
+
+function refreshHudPortraits() {
+  drawHudPortrait(playerPortraitCanvas, player.characterData, 1);
+  drawHudPortrait(enemyPortraitCanvas, enemy.characterData, -1);
 }
 
 function syncFightHud() {
@@ -350,6 +966,77 @@ function syncFightHud() {
   if (enemyHealthBar) enemyHealthBar.style.width = `${Math.max(0, enemyRatio)}%`;
   if (playerHealthText) playerHealthText.textContent = `${player.health} / ${player.maxHealth}`;
   if (enemyHealthText) enemyHealthText.textContent = `${enemy.health} / ${enemy.maxHealth}`;
+  refreshHudPortraits();
+}
+
+function drawQuestionMarkShowcase(previewCanvas) {
+  if (!previewCanvas) return;
+
+  const pctx = previewCanvas.getContext("2d");
+  pctx.imageSmoothingEnabled = false;
+  pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+  const ring = pctx.createRadialGradient(
+    previewCanvas.width / 2,
+    previewCanvas.height / 2 - 10,
+    12,
+    previewCanvas.width / 2,
+    previewCanvas.height / 2 - 10,
+    previewCanvas.width * 0.34
+  );
+  ring.addColorStop(0, "rgba(255, 193, 104, 0.34)");
+  ring.addColorStop(1, "rgba(255, 193, 104, 0)");
+  pctx.fillStyle = ring;
+  pctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+  pctx.strokeStyle = "rgba(255, 213, 146, 0.18)";
+  pctx.lineWidth = 3;
+  pctx.beginPath();
+  pctx.arc(previewCanvas.width / 2, previewCanvas.height / 2 - 8, 70, 0, Math.PI * 2);
+  pctx.stroke();
+
+  pctx.textAlign = "center";
+  pctx.textBaseline = "middle";
+  pctx.fillStyle = "#ffe3a4";
+  pctx.font = "900 170px 'Bebas Neue', Impact, sans-serif";
+  pctx.fillText("?", previewCanvas.width / 2, previewCanvas.height / 2 + 8);
+
+  pctx.fillStyle = "rgba(255, 244, 210, 0.85)";
+  pctx.font = "700 20px 'Barlow', sans-serif";
+  pctx.fillText("RIVAL ALEATORIO", previewCanvas.width / 2, previewCanvas.height - 52);
+}
+
+function getAnimFrameMeta(anim, frameValue = 0) {
+  if (!anim) return null;
+
+  const frameWidth = anim.frameWidth || FRAME_W;
+  const frameHeight = anim.frameHeight || FRAME_H;
+  const columns = anim.columns || anim.frames || 1;
+  const startFrame = anim.startFrame || 0;
+  const frame = startFrame + Math.min(Math.floor(frameValue), anim.frames - 1);
+
+  return {
+    sx: (frame % columns) * frameWidth,
+    sy: Math.floor(frame / columns) * frameHeight,
+    sw: frameWidth,
+    sh: frameHeight
+  };
+}
+
+function drawSpriteFrame(renderCtx, img, frameMeta, dx, dy, dw, dh, facing = 1) {
+  if (!renderCtx || !img || !frameMeta) return;
+
+  renderCtx.save();
+
+  if (facing === -1) {
+    renderCtx.translate(dx + dw, 0);
+    renderCtx.scale(-1, 1);
+    renderCtx.drawImage(img, frameMeta.sx, frameMeta.sy, frameMeta.sw, frameMeta.sh, 0, dy, dw, dh);
+  } else {
+    renderCtx.drawImage(img, frameMeta.sx, frameMeta.sy, frameMeta.sw, frameMeta.sh, dx, dy, dw, dh);
+  }
+
+  renderCtx.restore();
 }
 
   function setState(fighter, newState, force = false) {
@@ -362,7 +1049,7 @@ function syncFightHud() {
   }
 
   function canAttack(fighter) {
-    return !fighter.isDead && !fighter.attackLocked && !fighter.isBlocking && !roundOver && !matchOver && !deathFlow.active;
+    return !fighter.isDead && !fighter.attackLocked && !fighter.isBlocking && !roundOver && !matchOver && !deathFlow.active && !roundIntro.active;
   }
 
   function resetDeathFlow() {
@@ -374,6 +1061,8 @@ function syncFightHud() {
   }
 
   function resetFighter(fighter, x, facing, data, aiControlled = false) {
+    fighter.width = data.hitbox?.width || 56;
+    fighter.height = data.hitbox?.height || 112;
     fighter.x = x;
     fighter.y = FLOOR_Y - fighter.height;
     fighter.vx = 0;
@@ -400,11 +1089,14 @@ function syncFightHud() {
   fighter.name = data.name;
   fighter.spriteSet = data.sprites;
   fighter.animSet = data.anim;
+  fighter.characterData = data;
   fighter.aiControlled = aiControlled;
   fighter.aiState = "idle";
   fighter.aiDecisionTimer = 0;
   fighter.aiActionTimer = 0;
   fighter.aiAttackCooldown = 0;
+  fighter.aiJumpCooldown = 0;
+  fighter.aiMoveSpeed = 0;
   fighter.aiStrafeBias = Math.random() < 0.5 ? -1 : 1;
 }
 
@@ -412,7 +1104,7 @@ function syncFightHud() {
     return characters.find(c => c.id !== selectedCharacter.id) || characters[0];
   }
 
-function startNewMatch() {
+function startNewMatch(enemyCharacterOverride = null) {
   if (!selectedCharacter) return;
 
     gameState.playerWins = 0;
@@ -425,17 +1117,22 @@ function startNewMatch() {
   hitstop = 0;
   clearKeys();
   resetRoundTransition();
+  resetRoundIntro();
   stopRoundKoAudio();
+  stopRoundIntroAudio();
   resetDeathFlow();
 
-    const enemyCharacter = getCpuPreviewCharacter();
+    const enemyCharacter = enemyCharacterOverride || getCpuMatchCharacter();
+    cpuSelection.lockedId = enemyCharacter?.id || null;
+    cpuSelection.previewId = cpuSelection.lockedId;
 
     resetFighter(player, 180, 1, selectedCharacter, false);
     resetFighter(enemy, 1040, -1, enemyCharacter, true);
 
     updateUI();
-    setMessage("Luta iniciada.");
+    setMessage(`Round ${gameState.round}`);
     setScreen("fight");
+    beginRoundIntro();
   }
 
 function nextRound() {
@@ -443,7 +1140,9 @@ function nextRound() {
   hitstop = 0;
   clearKeys();
   resetRoundTransition();
+  resetRoundIntro();
   stopRoundKoAudio();
+  stopRoundIntroAudio();
   resetDeathFlow();
 
     resetFighter(player, 180, 1, selectedCharacter, false);
@@ -452,6 +1151,7 @@ function nextRound() {
 
     updateUI();
     setMessage(`Round ${gameState.round}`);
+    beginRoundIntro();
   }
 
   function finishRound(winner) {
@@ -542,14 +1242,7 @@ function nextRound() {
       card.appendChild(meta);
 
       card.addEventListener("click", () => {
-        selectedCharacterId = char.id;
-        selectedCharacter = char;
-        confirmSelectionBtn.disabled = false;
-
-        document.querySelectorAll(".character-card").forEach(el => el.classList.remove("selected"));
-        card.classList.add("selected");
-
-        updateCharacterSelectShowcase();
+        applySelectedCharacter(char, true);
       });
 
       characterGrid.appendChild(card);
@@ -559,12 +1252,10 @@ function nextRound() {
     if (!selectedCharacter && characters.length > 0) {
       selectedCharacter = characters[0];
       selectedCharacterId = characters[0].id;
-      confirmSelectionBtn.disabled = false;
-
-      const firstCard = characterGrid.querySelector(".character-card");
-      if (firstCard) firstCard.classList.add("selected");
     }
 
+    syncSelectionActions();
+    syncSelectionCardStates();
     updateCharacterSelectShowcase();
   }
 
@@ -573,63 +1264,67 @@ function nextRound() {
     pctx.imageSmoothingEnabled = false;
 
     const img = assets[char.preview];
+    const previewAnim = char.anim?.idle;
     if (!img) return;
+    if (!previewAnim) return;
 
     pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     pctx.fillStyle = "#0a1020";
     pctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-    const scale = 1.75;
-    const dw = FRAME_W * scale;
-    const dh = FRAME_H * scale;
+    const frameMeta = getAnimFrameMeta(previewAnim, previewAnim.holdFrame ?? 0);
+    const targetHeight = previewCanvas.height * 0.78;
+    const scale = targetHeight / frameMeta.sh;
+    const dw = frameMeta.sw * scale;
+    const dh = frameMeta.sh * scale;
 
-    pctx.drawImage(
+    drawSpriteFrame(
+      pctx,
       img,
-      0, 0, FRAME_W, FRAME_H,
+      frameMeta,
       previewCanvas.width / 2 - dw / 2,
-      previewCanvas.height / 2 - dh / 2 + 8,
-      dw, dh
+      previewCanvas.height / 2 - dh / 2 + 10,
+      dw,
+      dh,
+      1
     );
   }
 
   function getCpuPreviewCharacter() {
-    if (!selectedCharacter) return characters[1] || characters[0];
-    return characters.find(c => c.id !== selectedCharacter.id) || selectedCharacter;
+    const preferredId = cpuSelection.previewId || cpuSelection.lockedId;
+    if (!preferredId) return null;
+    return getCharacterById(preferredId);
   }
 
   function drawShowcaseCharacter(previewCanvas, char, facing = 1, elapsed = 0) {
-    if (!previewCanvas || !char) return;
+    if (!previewCanvas) return;
 
     const pctx = previewCanvas.getContext("2d");
     pctx.imageSmoothingEnabled = false;
-
-    const img = assets[char.preview];
-    if (!img) return;
-
     pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-    const scale = 2.55;
-    const dw = FRAME_W * scale;
-    const dh = FRAME_H * scale;
-    const dx = previewCanvas.width / 2 - dw / 2;
-    const dy = previewCanvas.height / 2 - dh / 2 + 22;
-    const idleAnim = char.anim?.idle;
-    const idleFrame = idleAnim
-      ? Math.floor((elapsed * idleAnim.speed * 0.06) % idleAnim.frames)
-      : 0;
-    const sx = idleFrame * FRAME_W;
-
-    pctx.save();
-
-    if (facing === -1) {
-      pctx.translate(dx + dw, 0);
-      pctx.scale(-1, 1);
-      pctx.drawImage(img, sx, 0, FRAME_W, FRAME_H, 0, dy, dw, dh);
-    } else {
-      pctx.drawImage(img, sx, 0, FRAME_W, FRAME_H, dx, dy, dw, dh);
+    if (!char) {
+      drawQuestionMarkShowcase(previewCanvas);
+      return;
     }
 
-    pctx.restore();
+    const img = assets[char.preview];
+    const idleAnim = char.anim?.idle;
+    if (!img) return;
+    if (!idleAnim) return;
+
+    const idleFrame = idleAnim.frames > 1
+      ? Math.floor((elapsed * idleAnim.speed * 0.06) % idleAnim.frames)
+      : idleAnim.holdFrame ?? 0;
+    const frameMeta = getAnimFrameMeta(idleAnim, idleFrame);
+    const targetHeight = previewCanvas.height * 0.78;
+    const scale = targetHeight / frameMeta.sh;
+    const dw = frameMeta.sw * scale;
+    const dh = frameMeta.sh * scale;
+    const dx = previewCanvas.width / 2 - dw / 2;
+    const dy = previewCanvas.height / 2 - dh / 2 + 22;
+
+    drawSpriteFrame(pctx, img, frameMeta, dx, dy, dw, dh, facing);
   }
 
   function updateCharacterSelectShowcase() {
@@ -641,7 +1336,7 @@ function nextRound() {
     }
 
   if (enemySelectName) {
-    enemySelectName.textContent = cpuChar ? cpuChar.name : "RIVAL";
+    enemySelectName.textContent = cpuChar ? cpuChar.name : "???";
   }
 
   if (playerSelectDesc) {
@@ -649,11 +1344,17 @@ function nextRound() {
   }
 
   if (enemySelectDesc) {
-    enemySelectDesc.textContent = cpuChar ? cpuChar.description : "Oponente definido automaticamente para o confronto.";
+    enemySelectDesc.textContent = cpuSelection.spinning
+      ? "CPU escolhendo rival aleatoriamente..."
+      : cpuChar
+        ? cpuChar.description
+        : "O rival da CPU sera revelado so depois do sorteio.";
   }
 
   renderStatChips(playerSelectStats, playerChar?.stats);
   renderStatChips(enemySelectStats, cpuChar?.stats);
+  syncSelectionCardStates();
+  syncSelectionActions();
 
   drawShowcaseCharacter(playerPreviewCanvas, playerChar, 1, previewAnimationTime);
   drawShowcaseCharacter(enemyPreviewCanvas, cpuChar, -1, previewAnimationTime);
@@ -668,6 +1369,72 @@ function animateCharacterSelectShowcase() {
   drawShowcaseCharacter(enemyPreviewCanvas, cpuChar, -1, previewAnimationTime);
 }
 
+function getCpuMatchCharacter() {
+  const selectable = getCpuSelectableCharacters();
+  if (selectable.length === 0) return selectedCharacter || characters[0];
+
+  return getCharacterById(cpuSelection.lockedId) || selectable[0];
+}
+
+function runCpuSelectionRoulette() {
+  if (!selectedCharacter || cpuSelection.spinning) return;
+
+  const roster = getCpuCandidateRoster();
+  const selectable = getCpuSelectableCharacters();
+  if (roster.length === 0 || selectable.length === 0) {
+    startNewMatch();
+    return;
+  }
+
+  const currentCpu = getCpuPreviewCharacter();
+  let cursor = Math.max(0, roster.findIndex((char) => char.id === currentCpu?.id));
+  const finalChar = selectable[Math.floor(Math.random() * selectable.length)];
+  const finalIndex = Math.max(0, roster.findIndex((char) => char.id === finalChar.id));
+  const cycles = 2 + Math.floor(Math.random() * 2);
+  let totalSteps = cycles * roster.length + ((finalIndex - cursor + roster.length) % roster.length);
+
+  if (totalSteps <= 0) {
+    totalSteps = roster.length;
+  }
+
+  cpuSelection.spinning = true;
+  cpuSelection.lockedId = null;
+  cpuSelection.previewId = currentCpu?.id || roster[0].id;
+  cpuRouletteStep = 0;
+  syncSelectionActions();
+  syncSelectionCardStates();
+  updateCharacterSelectShowcase();
+
+  const spinStep = () => {
+    if (!cpuSelection.spinning) return;
+
+    cursor = (cursor + 1) % roster.length;
+    cpuRouletteStep += 1;
+    cpuSelection.previewId = roster[cursor].id;
+    playSelectClickAudio();
+    syncSelectionCardStates();
+    updateCharacterSelectShowcase();
+
+    if (cpuRouletteStep >= totalSteps) {
+      cpuSelection.spinning = false;
+      cpuSelection.lockedId = finalChar.id;
+      cpuSelection.previewId = finalChar.id;
+      cpuSelection.timerId = null;
+      syncSelectionActions();
+      syncSelectionCardStates();
+      updateCharacterSelectShowcase();
+      startNewMatch(finalChar);
+      return;
+    }
+
+    const progress = cpuRouletteStep / totalSteps;
+    const delay = Math.round(60 + progress * progress * 170);
+    cpuSelection.timerId = setTimeout(spinStep, delay);
+  };
+
+  cpuSelection.timerId = setTimeout(spinStep, 100);
+}
+
   function requestFullscreenGame() {
     const el = document.documentElement;
     if (!document.fullscreenElement && el.requestFullscreen) {
@@ -675,8 +1442,23 @@ function animateCharacterSelectShowcase() {
     }
   }
 
-  window.addEventListener("keydown", (e) => {
+  function handleGameKeyDown(e) {
+    if (e.__shadowProtocolHandled) return;
+    e.__shadowProtocolHandled = true;
+
     const key = e.key.toLowerCase();
+    const wasForcedDesktop = inputMode.forceDesktop;
+
+    registerUserInteraction();
+
+    if (shouldForceDesktopModeForKey(key)) {
+      inputMode.forceDesktop = true;
+      inputMode.lastPointerType = "keyboard";
+      if (!wasForcedDesktop) {
+        syncMobileUi();
+      }
+    }
+
     keys[key] = true;
 
     if ([" ", "shift", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
@@ -693,13 +1475,17 @@ function animateCharacterSelectShowcase() {
 
     // SELEÇÃO
     if (gameState.screen === "select") {
+      if (cpuSelection.spinning) {
+        return;
+      }
+
       if (key === "escape") {
         setScreen("menu");
         return;
       }
 
       if (key === "enter" && selectedCharacter) {
-        startNewMatch();
+        runCpuSelectionRoulette();
         return;
       }
 
@@ -715,21 +1501,13 @@ function animateCharacterSelectShowcase() {
         return;
       }
 
-      selectedCharacter = characters[nextIndex];
-      selectedCharacterId = selectedCharacter.id;
-      confirmSelectionBtn.disabled = false;
-
-      document.querySelectorAll(".character-card").forEach(el => {
-        el.classList.toggle("selected", el.dataset.id === selectedCharacterId);
-      });
-
-      updateCharacterSelectShowcase();
+      applySelectedCharacter(characters[nextIndex]);
       return;
     }
 
     // FIGHT
     if (gameState.screen !== "fight") return;
-    if (roundOver || matchOver || deathFlow.active) return;
+    if (roundOver || matchOver || deathFlow.active || roundIntro.active) return;
 
     if (key === "escape") {
       setScreen("menu");
@@ -742,23 +1520,133 @@ function animateCharacterSelectShowcase() {
       !player.attackLocked &&
       !player.isBlocking
     ) {
-      player.vy = JUMP_FORCE;
-      player.onGround = false;
-      setState(player, "jump", true);
+      triggerPlayerJump();
     }
 
-  if (key === "j" && canAttack(player)) startAttack(player, "attack1");
-  if (key === "k" && canAttack(player)) startAttack(player, "attack2");
-  if (key === "l" && canAttack(player)) startAttack(player, "attack3");
-  });
+    if (key === "j" && canAttack(player)) startAttack(player, "attack1");
+    if (key === "k" && canAttack(player)) startAttack(player, "attack2");
+    if (key === "l" && canAttack(player)) startAttack(player, "attack3");
+  }
 
-  window.addEventListener("keyup", (e) => {
+  function handleGameKeyUp(e) {
+    if (e.__shadowProtocolHandled) return;
+    e.__shadowProtocolHandled = true;
+
     const key = e.key.toLowerCase();
     keys[key] = false;
-  });
+  }
+
+  document.addEventListener("keydown", handleGameKeyDown, true);
+  window.addEventListener("keydown", handleGameKeyDown);
+  document.addEventListener("keyup", handleGameKeyUp, true);
+  window.addEventListener("keyup", handleGameKeyUp);
 
   window.addEventListener("blur", () => {
     clearKeys();
+  });
+
+  window.addEventListener("pointerdown", (event) => {
+    registerUserInteraction();
+
+    if (!event.pointerType) return;
+
+    inputMode.lastPointerType = event.pointerType;
+
+    if (event.pointerType === "mouse" || event.pointerType === "pen") {
+      if (!inputMode.forceDesktop) {
+        inputMode.forceDesktop = true;
+        syncMobileUi();
+      }
+      return;
+    }
+
+    if (event.pointerType === "touch" && inputMode.forceDesktop && isLikelyMobileDevice()) {
+      inputMode.forceDesktop = false;
+      syncMobileUi();
+    }
+  });
+
+  if (mobileJoystickArea) {
+    mobileJoystickArea.addEventListener("pointerdown", (event) => {
+      if (!isMobileFightControlsEnabled()) return;
+      if (touchControls.joystickPointerId !== null) return;
+      event.preventDefault();
+      touchControls.joystickPointerId = event.pointerId;
+      mobileJoystickArea.setPointerCapture(event.pointerId);
+      updateTouchJoystickFromPointer(event.clientX, event.clientY);
+    });
+
+    mobileJoystickArea.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== touchControls.joystickPointerId) return;
+      event.preventDefault();
+      updateTouchJoystickFromPointer(event.clientX, event.clientY);
+    });
+
+    const releaseJoystick = (event) => {
+      if (event.pointerId !== touchControls.joystickPointerId) return;
+      event.preventDefault();
+      touchControls.joystickPointerId = null;
+      touchControls.moveX = 0;
+      touchControls.moveY = 0;
+      touchControls.run = false;
+      updateJoystickVisual();
+    };
+
+    mobileJoystickArea.addEventListener("pointerup", releaseJoystick);
+    mobileJoystickArea.addEventListener("pointercancel", releaseJoystick);
+    mobileJoystickArea.addEventListener("lostpointercapture", releaseJoystick);
+  }
+
+  function bindTouchButton(button, onPress, onRelease = null) {
+    if (!button) return;
+
+    const release = (event) => {
+      button.classList.remove("is-pressed");
+      if (onRelease) onRelease(event);
+    };
+
+    button.addEventListener("pointerdown", (event) => {
+      if (!isMobileFightControlsEnabled()) return;
+      event.preventDefault();
+      button.classList.add("is-pressed");
+      button.setPointerCapture(event.pointerId);
+      onPress(event);
+    });
+
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("lostpointercapture", release);
+  }
+
+  bindTouchButton(mobileJumpButton, () => {
+    triggerTouchCombatAction("jump");
+  });
+
+  bindTouchButton(mobileAttack1Button, () => {
+    triggerTouchCombatAction("attack1");
+  });
+
+  bindTouchButton(mobileAttack2Button, () => {
+    triggerTouchCombatAction("attack2");
+  });
+
+  bindTouchButton(mobileAttack3Button, () => {
+    triggerTouchCombatAction("attack3");
+  });
+
+  bindTouchButton(
+    mobileBlockButton,
+    () => {
+      if (!isMobileFightControlsEnabled()) return;
+      touchControls.blockPressed = true;
+    },
+    () => {
+      touchControls.blockPressed = false;
+    }
+  );
+
+  bindTouchButton(mobileMenuButton, () => {
+    triggerTouchCombatAction("menu");
   });
 
   function startAttack(fighter, type) {
@@ -768,7 +1656,13 @@ function animateCharacterSelectShowcase() {
     fighter.attackFrame = 0;
     fighter.hitDone = false;
     if (type === "attack1" || type === "attack2" || type === "attack3") {
-      playSwordSlashAudio();
+      if (type === "attack1") {
+        playSwordSlashAudio();
+      } else if (fighter.characterId === "arcanist" && (type === "attack2" || type === "attack3")) {
+        playMageFlameAudio();
+      } else if (fighter.characterId !== "arcanist") {
+        playSwordSlashAudio();
+      }
     }
     setState(fighter, type, true);
   }
@@ -813,11 +1707,22 @@ function animateCharacterSelectShowcase() {
     return { x: f.x, y: f.y, w: f.width, h: f.height };
   }
 
+  function isTryingToCrossOver(a, b) {
+    if (a.onGround && b.onGround) return false;
+
+    const aCenterY = a.y + a.height / 2;
+    const bCenterY = b.y + b.height / 2;
+    const verticalGap = Math.abs(aCenterY - bCenterY);
+
+    return verticalGap > 20;
+  }
+
   function separateFighters() {
     const a = getRect(player);
     const b = getRect(enemy);
 
     if (!intersects(a, b)) return;
+    if (isTryingToCrossOver(player, enemy) || isTryingToCrossOver(enemy, player)) return;
 
     const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
     if (overlapX <= 0) return;
@@ -855,7 +1760,7 @@ function animateCharacterSelectShowcase() {
       !player.attackLocked &&
       player.onGround &&
       !deathFlow.active &&
-      (keys["s"] || keys["arrowdown"]);
+      (keys["s"] || keys["arrowdown"] || touchControls.blockPressed);
 
     if (player.isBlocking) {
       player.vx *= 0.65;
@@ -890,9 +1795,7 @@ function animateCharacterSelectShowcase() {
       return;
     }
 
-    const left = keys["a"] || keys["arrowleft"];
-    const right = keys["d"] || keys["arrowright"];
-    const running = keys["shift"];
+    const { left, right, running } = getPlayerInputState();
 
     const targetSpeed = running ? MAX_RUN_SPEED : MAX_WALK_SPEED;
     const accel = player.onGround ? GROUND_ACCEL : AIR_ACCEL;
@@ -912,6 +1815,33 @@ function animateCharacterSelectShowcase() {
       player.vx *= 0.90;
       if (Math.abs(player.vx) < 0.05) player.vx = 0;
     }
+  }
+
+  function triggerJump(fighter, horizontalBoost = 0) {
+    if (!fighter.onGround || fighter.attackLocked || fighter.isBlocking || fighter.isDead) return false;
+
+    fighter.vy = JUMP_FORCE;
+    fighter.vx += horizontalBoost;
+    fighter.onGround = false;
+    setState(fighter, "jump", true);
+    return true;
+  }
+
+  function triggerPlayerJump() {
+    const { left, right, running } = getPlayerInputState();
+    const moveDir = (right ? 1 : 0) - (left ? 1 : 0);
+
+    if (moveDir !== 0) {
+      player.vx = moveDir * (running ? 4.2 : 3.2);
+    }
+
+    triggerJump(player);
+  }
+
+  function approachValue(current, target, step) {
+    if (current < target) return Math.min(current + step, target);
+    if (current > target) return Math.max(current - step, target);
+    return target;
   }
 
   function updateEnemyAI() {
@@ -938,54 +1868,102 @@ function animateCharacterSelectShowcase() {
     const lowHealth = enemy.health < enemy.maxHealth * 0.35;
     const veryClose = absDist < 86;
     const close = absDist < 135;
+    const midRange = absDist >= 135 && absDist < 230;
     const far = absDist > 250;
+    const moveDir = distX === 0 ? 0 : distX > 0 ? 1 : -1;
 
     if (enemy.aiDecisionTimer <= 0) {
-      enemy.aiDecisionTimer = 18 + Math.floor(Math.random() * 28);
+      enemy.aiDecisionTimer = 18 + Math.floor(Math.random() * 26);
 
-      if (playerAttacking && close && Math.random() < 0.45) {
+      if (playerAttacking && close && Math.random() < 0.44) {
         enemy.aiState = "retreat";
-        enemy.aiActionTimer = 16 + Math.floor(Math.random() * 22);
+        enemy.aiActionTimer = 12 + Math.floor(Math.random() * 20);
+        enemy.aiMoveSpeed = 0.95 + Math.random() * 0.18;
       } else if (veryClose && Math.random() < (lowHealth ? 0.55 : 0.3)) {
         enemy.aiState = "retreat";
-        enemy.aiActionTimer = 14 + Math.floor(Math.random() * 20);
+        enemy.aiActionTimer = 12 + Math.floor(Math.random() * 18);
+        enemy.aiMoveSpeed = 0.88 + Math.random() * 0.18;
       } else if (far) {
-        enemy.aiState = Math.random() < 0.78 ? "approach" : "wait";
-        enemy.aiActionTimer = 20 + Math.floor(Math.random() * 22);
-      } else if (close) {
+        enemy.aiState = Math.random() < 0.72 ? "approach" : "wait";
+        enemy.aiActionTimer = 18 + Math.floor(Math.random() * 20);
+        enemy.aiMoveSpeed = enemy.aiState === "approach"
+          ? 1.12 + Math.random() * 0.16
+          : 0;
+      } else if (midRange) {
         const roll = Math.random();
-        if (roll < 0.25) {
+        if (roll < 0.26) {
+          enemy.aiState = "hold-range";
+          enemy.aiActionTimer = 12 + Math.floor(Math.random() * 18);
+          enemy.aiMoveSpeed = 0.78 + Math.random() * 0.08;
+        } else if (roll < 0.42) {
           enemy.aiState = "wait";
           enemy.aiActionTimer = 10 + Math.floor(Math.random() * 18);
-        } else if (roll < 0.48) {
+          enemy.aiMoveSpeed = 0;
+        } else if (roll < 0.62) {
           enemy.aiState = "strafe";
-          enemy.aiActionTimer = 16 + Math.floor(Math.random() * 20);
+          enemy.aiActionTimer = 12 + Math.floor(Math.random() * 16);
+          enemy.aiMoveSpeed = 0.7 + Math.random() * 0.08;
           if (Math.random() < 0.5) enemy.aiStrafeBias *= -1;
         } else {
           enemy.aiState = "approach";
-          enemy.aiActionTimer = 14 + Math.floor(Math.random() * 18);
+          enemy.aiActionTimer = 14 + Math.floor(Math.random() * 16);
+          enemy.aiMoveSpeed = 0.98 + Math.random() * 0.12;
+        }
+      } else if (close) {
+        const roll = Math.random();
+        if (roll < 0.26) {
+          enemy.aiState = "wait";
+          enemy.aiActionTimer = 8 + Math.floor(Math.random() * 16);
+          enemy.aiMoveSpeed = 0;
+        } else if (roll < 0.52) {
+          enemy.aiState = "strafe";
+          enemy.aiActionTimer = 12 + Math.floor(Math.random() * 18);
+          enemy.aiMoveSpeed = 0.64 + Math.random() * 0.08;
+          if (Math.random() < 0.5) enemy.aiStrafeBias *= -1;
+        } else if (roll < 0.7) {
+          enemy.aiState = "retreat";
+          enemy.aiActionTimer = 10 + Math.floor(Math.random() * 14);
+          enemy.aiMoveSpeed = 0.84 + Math.random() * 0.12;
+        } else {
+          enemy.aiState = "pressure";
+          enemy.aiActionTimer = 12 + Math.floor(Math.random() * 12);
+          enemy.aiMoveSpeed = 0.96 + Math.random() * 0.12;
         }
       } else {
-        enemy.aiState = "approach";
-        enemy.aiActionTimer = 16 + Math.floor(Math.random() * 24);
+        enemy.aiState = Math.random() < 0.58 ? "approach" : "hold-range";
+        enemy.aiActionTimer = 14 + Math.floor(Math.random() * 20);
+        enemy.aiMoveSpeed = enemy.aiState === "approach"
+          ? 1.02 + Math.random() * 0.14
+          : 0.78 + Math.random() * 0.08;
       }
     }
 
-    const moveDir = distX === 0 ? 0 : distX > 0 ? 1 : -1;
+    let targetVX = 0;
 
     if (enemy.aiState === "wait") {
-      enemy.vx *= 0.72;
+      targetVX = 0;
+    } else if (enemy.aiState === "hold-range") {
+      const desiredDir = absDist < 170 ? -moveDir : moveDir;
+      targetVX = desiredDir * enemy.aiMoveSpeed;
     } else if (enemy.aiState === "retreat") {
-      enemy.vx = -moveDir * (1.0 + Math.random() * 0.45);
+      targetVX = -moveDir * enemy.aiMoveSpeed;
     } else if (enemy.aiState === "strafe") {
-      enemy.vx = enemy.aiStrafeBias * 0.9;
+      targetVX = enemy.aiStrafeBias * enemy.aiMoveSpeed;
 
       if (absDist > 170) {
-        enemy.vx = moveDir * 1.15;
+        targetVX = moveDir * Math.max(enemy.aiMoveSpeed, 0.82);
       }
+    } else if (enemy.aiState === "pressure") {
+      targetVX = moveDir * enemy.aiMoveSpeed;
     } else {
-      const desiredSpeed = close ? 0.95 + Math.random() * 0.35 : 1.2 + Math.random() * 0.45;
-      enemy.vx = moveDir * desiredSpeed;
+      targetVX = moveDir * enemy.aiMoveSpeed;
+    }
+
+    const enemyAccel = enemy.onGround ? 0.12 : 0.06;
+    enemy.vx = approachValue(enemy.vx, targetVX, enemyAccel);
+
+    if (Math.abs(targetVX) < 0.01) {
+      enemy.vx *= enemy.onGround ? 0.8 : 0.94;
     }
 
     if (Math.abs(enemy.vx) < 0.05) enemy.vx = 0;
@@ -993,13 +1971,13 @@ function animateCharacterSelectShowcase() {
     if (enemy.aiAttackCooldown <= 0 && close && enemy.onGround && !player.isDead) {
       const attackRoll = Math.random();
 
-      if (veryClose && attackRoll < 0.04) {
+      if (veryClose && attackRoll < 0.05) {
         startAttack(enemy, lowHealth ? "attack2" : "attack1");
         enemy.aiAttackCooldown = 26 + Math.floor(Math.random() * 18);
         enemy.aiState = "wait";
         enemy.aiActionTimer = 12;
-      } else if (absDist < 118 && attackRoll < 0.02) {
-        startAttack(enemy, "attack2");
+      } else if (absDist < 118 && attackRoll < 0.026) {
+        startAttack(enemy, Math.random() < 0.24 ? "attack3" : "attack2");
         enemy.aiAttackCooldown = 34 + Math.floor(Math.random() * 18);
         enemy.aiState = "retreat";
         enemy.aiActionTimer = 10;
@@ -1132,18 +2110,24 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
       else setState(player, "idle");
     }
 
-    if (!enemy.attackLocked && !enemy.isDead && !enemy.isBlocking && enemy.hurtTimer <= 0) {
-      if (!enemy.onGround) setState(enemy, "jump");
-      else if (Math.abs(enemy.vx) > 1.2) setState(enemy, "walk");
-      else setState(enemy, "idle");
-    }
+  if (!enemy.attackLocked && !enemy.isDead && !enemy.isBlocking && enemy.hurtTimer <= 0) {
+    if (!enemy.onGround) setState(enemy, "jump");
+    else if (Math.abs(enemy.vx) > 0.22) setState(enemy, "walk");
+    else setState(enemy, "idle");
   }
+}
 
   function updateAnimation(fighter) {
     if (!fighter.animSet) return;
 
     const anim = fighter.animSet[fighter.state];
     if (!anim) return;
+
+    if (fighter.state === "block") {
+      fighter.frameIndex = anim.holdFrame ?? 0;
+      fighter.frameTick = 0;
+      return;
+    }
 
     fighter.frameTick += anim.speed;
 
@@ -1235,25 +2219,18 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
 
     if (!img || !anim) return;
 
-    const frame = Math.min(Math.floor(fighter.frameIndex), anim.frames - 1);
-    const sx = frame * FRAME_W;
-
-    const dw = FRAME_W * SCALE;
-    const dh = FRAME_H * SCALE;
+    const frameIndex = anim.frames > 1
+      ? Math.min(Math.floor(fighter.frameIndex), anim.frames - 1)
+      : anim.holdFrame ?? 0;
+    const frameMeta = getAnimFrameMeta(anim, frameIndex);
+    const drawHeight = fighter.characterData?.drawHeight || FRAME_H * SCALE;
+    const scale = drawHeight / frameMeta.sh;
+    const dw = frameMeta.sw * scale;
+    const dh = frameMeta.sh * scale;
     const dx = fighter.x - (dw - fighter.width) / 2;
     const dy = fighter.y - (dh - fighter.height);
 
-    ctx.save();
-
-    if (fighter.facing === -1) {
-      ctx.translate(dx + dw, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(img, sx, 0, FRAME_W, FRAME_H, 0, dy, dw, dh);
-    } else {
-      ctx.drawImage(img, sx, 0, FRAME_W, FRAME_H, dx, dy, dw, dh);
-    }
-
-    ctx.restore();
+    drawSpriteFrame(ctx, img, frameMeta, dx, dy, dw, dh, fighter.facing);
   }
 
   function drawHealthBars() {
@@ -1328,6 +2305,14 @@ function drawOverlayCard(title, subtitle, scoreText = "") {
   }
 
   function drawRoundOverlay() {
+    if (roundIntro.active) {
+      drawOverlayCard(
+        `ROUND ${Math.min(roundIntro.round, 3)}`,
+        "A luta comeca quando o anuncio terminar."
+      );
+      return;
+    }
+
     if (deathFlow.active) {
       drawOverlayCard("K.O.", "Finalizando animação de morte...");
       return;
@@ -1396,6 +2381,30 @@ function draw() {
       return;
     }
 
+    if (roundIntro.active) {
+      const introAudio = getRoundIntroAudio(roundIntro.round);
+      const audioStillPlaying =
+        roundIntro.audioStarted &&
+        introAudio &&
+        !introAudio.paused &&
+        !introAudio.ended &&
+        introAudio.currentTime > 0;
+
+      if (roundIntro.timer > 0) {
+        roundIntro.timer--;
+      }
+
+      if (roundIntro.timer <= 0 && !audioStillPlaying) {
+        roundIntro.active = false;
+        roundIntro.audioStarted = false;
+        stopRoundIntroAudio();
+      }
+
+      updateAnimation(player);
+      updateAnimation(enemy);
+      return;
+    }
+
     if (hitstop > 0) {
       hitstop--;
       updateAnimation(player);
@@ -1441,21 +2450,34 @@ function draw() {
 
 if (fullscreenBtn) {
   fullscreenBtn.addEventListener("click", () => {
+    registerUserInteraction();
     requestFullscreenGame();
   });
 }
 
+  menuScreen.addEventListener("pointerdown", (event) => {
+    registerUserInteraction();
+    if (gameState.screen !== "menu") return;
+    if (event.target.closest("button")) return;
+    setScreen("select");
+  });
+
   backToMenuBtn.addEventListener("click", () => {
+    registerUserInteraction();
+    playSelectClickAudio();
     setScreen("menu");
   });
 
   confirmSelectionBtn.addEventListener("click", () => {
+    registerUserInteraction();
     if (!selectedCharacter) return;
-    startNewMatch();
+    playSelectClickAudio();
+    runCpuSelectionRoulette();
   });
 
 if (restartMatchBtn) {
   restartMatchBtn.addEventListener("click", () => {
+    registerUserInteraction();
     if (!selectedCharacter) return;
     startNewMatch();
   });
@@ -1463,17 +2485,29 @@ if (restartMatchBtn) {
 
 if (backToMenuFromFightBtn) {
   backToMenuFromFightBtn.addEventListener("click", () => {
+    registerUserInteraction();
     setScreen("menu");
   });
 }
 
+window.addEventListener("resize", syncMobileUi);
+window.addEventListener("orientationchange", syncMobileUi);
+
 (async function init() {
   try {
+    [menuScreen, selectScreen, fightScreen, document.body].forEach((element) => {
+      if (element) {
+        element.tabIndex = -1;
+      }
+    });
+
     setMessage("Carregando assets...");
     await preloadAssets();
     renderCharacterCards();
     updateUI();
+    syncMobileUi();
     setScreen("menu");
+    focusGameSurface();
     setMessage("Pronto.");
     requestAnimationFrame(gameLoop);
     } catch (error) {

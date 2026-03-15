@@ -87,12 +87,17 @@
 
         <header class="fight-topbar panel-surface">
           <div class="fighter-hud fighter-hud-left">
-            <div class="hud-meta">
-              <span class="hud-role">Jogador</span>
-              <strong class="top-name left" id="playerNameLabel">PLAYER</strong>
-            </div>
-            <div class="hud-bar-track">
-              <div id="playerHealthBar" class="hud-bar-fill player"></div>
+            <div class="hud-primary">
+              <canvas id="playerPortraitCanvas" class="hud-portrait" width="116" height="116"></canvas>
+              <div class="hud-info">
+                <div class="hud-meta">
+                  <span class="hud-role">Jogador</span>
+                  <strong class="top-name left" id="playerNameLabel">PLAYER</strong>
+                </div>
+                <div class="hud-bar-track">
+                  <div id="playerHealthBar" class="hud-bar-fill player"></div>
+                </div>
+              </div>
             </div>
             <div id="playerHealthText" class="hud-health-text">220 / 220</div>
           </div>
@@ -104,16 +109,47 @@
           </div>
 
           <div class="fighter-hud fighter-hud-right">
-            <div class="hud-meta">
-              <span class="hud-role">CPU</span>
-              <strong class="top-name right" id="enemyNameLabel">ENEMY</strong>
-            </div>
-            <div class="hud-bar-track">
-              <div id="enemyHealthBar" class="hud-bar-fill enemy"></div>
+            <div class="hud-primary">
+              <div class="hud-info">
+                <div class="hud-meta">
+                  <span class="hud-role">CPU</span>
+                  <strong class="top-name right" id="enemyNameLabel">ENEMY</strong>
+                </div>
+                <div class="hud-bar-track">
+                  <div id="enemyHealthBar" class="hud-bar-fill enemy"></div>
+                </div>
+              </div>
+              <canvas id="enemyPortraitCanvas" class="hud-portrait" width="116" height="116"></canvas>
             </div>
             <div id="enemyHealthText" class="hud-health-text">220 / 220</div>
           </div>
         </header>
+
+        <div id="mobileControls" class="mobile-controls" aria-hidden="true">
+          <div class="mobile-controls-left">
+            <div class="mobile-joystick-shell">
+              <div class="mobile-control-label">Mover</div>
+              <div id="mobileJoystickArea" class="mobile-joystick" role="application" aria-label="Joystick virtual">
+                <div class="mobile-joystick-ring"></div>
+                <div id="mobileJoystickThumb" class="mobile-joystick-thumb"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mobile-controls-right">
+            <div class="mobile-utility-row">
+              <button id="mobileBlockButton" class="mobile-utility-btn mobile-guard-btn" type="button">DEF</button>
+              <button id="mobileMenuButton" class="mobile-utility-btn mobile-menu-btn" type="button">MENU</button>
+            </div>
+
+            <div class="mobile-actions-cluster">
+              <button id="mobileJumpButton" class="mobile-action-btn mobile-jump-btn" type="button">PULO</button>
+              <button id="mobileAttack1Button" class="mobile-action-btn attack-1" type="button">ATQ</button>
+              <button id="mobileAttack2Button" class="mobile-action-btn attack-2" type="button">MAG</button>
+              <button id="mobileAttack3Button" class="mobile-action-btn attack-3" type="button">ULT</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
