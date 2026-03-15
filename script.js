@@ -657,6 +657,14 @@ function isMobileFightControlsEnabled() {
   return mobileMode.active && gameState.screen === "fight";
 }
 
+function isLandscapeViewport() {
+  return window.innerWidth > window.innerHeight;
+}
+
+function isShortMobileViewport() {
+  return mobileMode.active && window.innerHeight <= 560;
+}
+
 function updateJoystickVisual() {
   if (!mobileJoystickThumb || !mobileJoystickArea) return;
 
@@ -687,6 +695,8 @@ function resetTouchControls() {
 function syncMobileUi() {
   mobileMode.active = isMobileViewport();
   document.body.classList.toggle("mobile-device", mobileMode.active);
+  document.body.classList.toggle("mobile-landscape", mobileMode.active && isLandscapeViewport());
+  document.body.classList.toggle("mobile-short", isShortMobileViewport());
   document.body.classList.toggle("fight-touch-active", mobileMode.active && gameState.screen === "fight");
 
   if (mobileControls) {

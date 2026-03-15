@@ -60,6 +60,7 @@ select {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -972,6 +973,7 @@ select {
 .canvas-wrap {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.48);
 }
@@ -1307,6 +1309,7 @@ body.fight-touch-active #fightScreen {
   body.mobile-device #fightScreen.active {
     display: block;
     min-height: 100vh;
+    min-height: 100dvh;
   }
 
   body.mobile-device .fight-topbar {
@@ -1386,6 +1389,311 @@ body.fight-touch-active #fightScreen {
   body.mobile-device .mobile-utility-btn {
     min-width: 66px;
     min-height: 44px;
+  }
+}
+
+@media (orientation: landscape) and (max-width: 960px) and (max-height: 560px) {
+  body.mobile-landscape,
+  body.mobile-landscape html {
+    overflow: hidden;
+  }
+
+  body.mobile-landscape .app {
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  body.mobile-landscape .screen,
+  body.mobile-landscape .screen.active,
+  body.mobile-landscape #fightScreen,
+  body.mobile-landscape #fightScreen.active {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  body.mobile-landscape .menu-screen,
+  body.mobile-landscape .select-screen {
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+  }
+
+  body.mobile-landscape .menu-shell {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  body.mobile-landscape .menu-story {
+    width: min(56vw, 500px);
+    transform: translate(-50%, -52%);
+  }
+
+  body.mobile-landscape .game-title span {
+    font-size: clamp(2.8rem, 11vh, 4.8rem);
+  }
+
+  body.mobile-landscape .menu-subtitle {
+    margin-top: 10px;
+    font-size: 0.92rem;
+    letter-spacing: 0.26em;
+  }
+
+  body.mobile-landscape .hero-start {
+    margin-top: 18px;
+    padding: 10px 18px;
+  }
+
+  body.mobile-landscape .menu-corner-tip {
+    right: 12px;
+    bottom: 12px;
+    width: min(240px, 34vw);
+    padding: 12px 14px;
+    border-radius: 18px;
+  }
+
+  body.mobile-landscape .tip-label {
+    margin-bottom: 6px;
+    font-size: 0.68rem;
+  }
+
+  body.mobile-landscape .tip-panel p {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  body.mobile-landscape .menu-watermark {
+    right: 12px;
+    bottom: 12px;
+    padding: 7px 11px;
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+  }
+
+  body.mobile-landscape .select-screen {
+    padding: 8px;
+  }
+
+  body.mobile-landscape .select-shell {
+    width: 100%;
+    height: calc(100dvh - 16px);
+    gap: 10px;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  body.mobile-landscape .select-shell::before {
+    inset: 10% 8% 14%;
+    filter: blur(14px);
+  }
+
+  body.mobile-landscape .select-stage {
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  body.mobile-landscape .fighter-showcase {
+    padding: 14px 14px 12px;
+    border-radius: 22px;
+  }
+
+  body.mobile-landscape .fighter-showcase canvas {
+    height: 92px;
+    min-height: 92px;
+    flex-basis: 92px;
+  }
+
+  body.mobile-landscape .showcase-label {
+    top: 10px;
+    left: 10px;
+    padding: 6px 10px;
+    font-size: 0.74rem;
+  }
+
+  body.mobile-landscape .showcase-footer {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  body.mobile-landscape .showcase-name {
+    font-size: clamp(1.55rem, 6vh, 2.3rem);
+  }
+
+  body.mobile-landscape .showcase-desc {
+    min-height: 28px;
+    font-size: 0.75rem;
+    line-height: 1.28;
+  }
+
+  body.mobile-landscape .showcase-stats {
+    gap: 6px;
+  }
+
+  body.mobile-landscape .showcase-stats span {
+    padding: 5px 8px;
+    font-size: 0.68rem;
+  }
+
+  body.mobile-landscape .versus-mark {
+    margin-top: 0;
+    font-size: clamp(2.6rem, 14vh, 4.6rem);
+  }
+
+  body.mobile-landscape .select-bottom-panel {
+    padding: 12px 14px 14px;
+    border-radius: 22px;
+  }
+
+  body.mobile-landscape .character-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 100%;
+  }
+
+  body.mobile-landscape .character-card {
+    padding: 8px;
+    border-radius: 16px;
+  }
+
+  body.mobile-landscape .character-preview {
+    height: 68px;
+    border-radius: 10px;
+  }
+
+  body.mobile-landscape .character-meta {
+    margin-top: 8px;
+  }
+
+  body.mobile-landscape .character-meta h3 {
+    font-size: 0.82rem;
+  }
+
+  body.mobile-landscape .character-stats {
+    display: none;
+  }
+
+  body.mobile-landscape .select-actions {
+    margin-top: 10px;
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+
+  body.mobile-landscape .select-action-btn {
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+
+  body.mobile-landscape .fight-layout,
+  body.mobile-landscape .canvas-wrap {
+    height: 100dvh;
+  }
+
+  body.mobile-landscape .fight-topbar {
+    top: max(6px, env(safe-area-inset-top));
+    left: max(6px, env(safe-area-inset-left));
+    right: max(6px, env(safe-area-inset-right));
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 16px;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  body.mobile-landscape .fighter-hud {
+    gap: 3px;
+  }
+
+  body.mobile-landscape .hud-primary {
+    gap: 8px;
+  }
+
+  body.mobile-landscape .hud-portrait {
+    width: 58px;
+    height: 58px;
+  }
+
+  body.mobile-landscape .top-name {
+    font-size: 0.8rem;
+  }
+
+  body.mobile-landscape .hud-role,
+  body.mobile-landscape .hud-health-text,
+  body.mobile-landscape .center-chip {
+    font-size: 0.56rem;
+    letter-spacing: 0.1em;
+  }
+
+  body.mobile-landscape .hud-bar-track {
+    height: 10px;
+  }
+
+  body.mobile-landscape .round-label {
+    font-size: 1.06rem;
+  }
+
+  body.mobile-landscape .score-label {
+    margin-top: 2px;
+    font-size: 0.7rem;
+  }
+
+  body.mobile-landscape .center-chip {
+    margin-top: 4px;
+  }
+
+  body.mobile-landscape .mobile-controls-left {
+    left: max(8px, env(safe-area-inset-left));
+  }
+
+  body.mobile-landscape .mobile-controls-right {
+    right: max(8px, env(safe-area-inset-right));
+    gap: 8px;
+  }
+
+  body.mobile-landscape .mobile-controls-left,
+  body.mobile-landscape .mobile-controls-right {
+    bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  body.mobile-landscape .mobile-control-label {
+    margin-bottom: 4px;
+    font-size: 0.56rem;
+  }
+
+  body.mobile-landscape .mobile-joystick {
+    width: 104px;
+    height: 104px;
+  }
+
+  body.mobile-landscape .mobile-joystick-ring {
+    inset: 16px;
+  }
+
+  body.mobile-landscape .mobile-joystick-thumb {
+    width: 42px;
+    height: 42px;
+    margin-left: -21px;
+    margin-top: -21px;
+  }
+
+  body.mobile-landscape .mobile-actions-cluster {
+    grid-template-columns: repeat(2, 58px);
+    gap: 8px;
+  }
+
+  body.mobile-landscape .mobile-action-btn {
+    min-width: 58px;
+    min-height: 58px;
+    border-radius: 18px;
+    font-size: 0.7rem;
+  }
+
+  body.mobile-landscape .mobile-utility-btn {
+    min-width: 52px;
+    min-height: 34px;
+    font-size: 0.62rem;
   }
 }
 
