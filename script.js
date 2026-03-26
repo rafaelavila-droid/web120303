@@ -364,6 +364,12 @@ const stage = {
   height: LOGICAL_HEIGHT
 };
 
+  const backgroundCache = {
+    canvas: null,
+    mode: "",
+    background: ""
+  };
+
   function createFighter() {
     return {
       x: 0,
@@ -1151,7 +1157,7 @@ function drawSpriteFrame(renderCtx, img, frameMeta, dx, dy, dw, dh, facing = 1) 
 function drawDashTrail(fighter, img, frameMeta, dx, dy, dw, dh) {
   if (!isDashActive(fighter) && fighter.dashBurstTimer <= 0) return;
 
-  const reducedEffects = isMobilePerformanceMode();
+  const reducedEffects = isMobilePerformanceMode() || !vrState.active;
   const direction = fighter.dashDirection || fighter.facing || 1;
   const strength = Math.max(
     fighter.dashTimer / DASH_DURATION_FRAMES,
@@ -2864,39 +2870,66 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
     finishRound(winner);
   }
 
-  function drawBackground() {
-    ctx.setTransform(renderState.scale, 0, 0, renderState.scale, 0, 0);
-    ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-
+  function rebuildBackgroundCache() {
+    const mode = isMobilePerformanceMode() ? "mobile" : "desktop";
     const bg = assets[stage.background];
-    if (bg) {
-      ctx.drawImage(bg, 0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-    } else {
-      ctx.fillStyle = "#0d1320";
-      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-    }
 
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
-    ctx.fillRect(0, FLOOR_Y, LOGICAL_WIDTH, LOGICAL_HEIGHT - FLOOR_Y);
-
-    if (isMobilePerformanceMode()) {
-      ctx.fillStyle = "rgba(0,0,0,0.16)";
-      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    if (
+      backgroundCache.canvas &&
+      backgroundCache.mode === mode &&
+      backgroundCache.background === stage.background
+    ) {
       return;
     }
 
-    const grad = ctx.createRadialGradient(
-      LOGICAL_WIDTH / 2,
-      LOGICAL_HEIGHT / 2,
-      120,
-      LOGICAL_WIDTH / 2,
-      LOGICAL_HEIGHT / 2,
-      LOGICAL_WIDTH * 0.65
-    );
-    grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(1, "rgba(0,0,0,0.48)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    const cacheCanvas = document.createElement("canvas");
+    cacheCanvas.width = LOGICAL_WIDTH;
+    cacheCanvas.height = LOGICAL_HEIGHT;
+
+    const cacheCtx = cacheCanvas.getContext("2d");
+    cacheCtx.imageSmoothingEnabled = false;
+
+    if (bg) {
+      cacheCtx.drawImage(bg, 0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    } else {
+      cacheCtx.fillStyle = "#0d1320";
+      cacheCtx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    }
+
+    cacheCtx.fillStyle = "rgba(0,0,0,0.18)";
+    cacheCtx.fillRect(0, FLOOR_Y, LOGICAL_WIDTH, LOGICAL_HEIGHT - FLOOR_Y);
+
+    if (mode === "mobile") {
+      cacheCtx.fillStyle = "rgba(0,0,0,0.16)";
+      cacheCtx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    } else {
+      const grad = cacheCtx.createRadialGradient(
+        LOGICAL_WIDTH / 2,
+        LOGICAL_HEIGHT / 2,
+        120,
+        LOGICAL_WIDTH / 2,
+        LOGICAL_HEIGHT / 2,
+        LOGICAL_WIDTH * 0.65
+      );
+      grad.addColorStop(0, "rgba(0,0,0,0)");
+      grad.addColorStop(1, "rgba(0,0,0,0.48)");
+      cacheCtx.fillStyle = grad;
+      cacheCtx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    }
+
+    backgroundCache.canvas = cacheCanvas;
+    backgroundCache.mode = mode;
+    backgroundCache.background = stage.background;
+  }
+
+  function drawBackground() {
+    ctx.setTransform(renderState.scale, 0, 0, renderState.scale, 0, 0);
+    ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    rebuildBackgroundCache();
+
+    if (backgroundCache.canvas) {
+      ctx.drawImage(backgroundCache.canvas, 0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    }
   }
 
   function drawFighter(fighter) {
@@ -3132,7 +3165,6 @@ function drawOverlayCard(title, subtitle, scoreText = "") {
 
 function draw() {
   drawBackground();
-  drawHealthBars();
   drawFighter(player);
   drawFighter(enemy);
   drawVrHud();
