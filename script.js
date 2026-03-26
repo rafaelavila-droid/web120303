@@ -43,7 +43,9 @@ const mobileAttack1Button = document.getElementById("mobileAttack1Button");
 const mobileAttack2Button = document.getElementById("mobileAttack2Button");
 const mobileAttack3Button = document.getElementById("mobileAttack3Button");
 const mobileBlockButton = document.getElementById("mobileBlockButton");
+const mobileDashButton = document.getElementById("mobileDashButton");
 const mobileMenuButton = document.getElementById("mobileMenuButton");
+const vrToggleButton = document.getElementById("vrToggleButton");
 
   const LOGICAL_WIDTH = 1280;
   const LOGICAL_HEIGHT = 720;
@@ -74,6 +76,15 @@ const mobileMenuButton = document.getElementById("mobileMenuButton");
   const POST_MATCH_RETURN_DELAY_FRAMES = 150;
   const ROUND_END_AUDIO_FALLBACK_FRAMES = 120;
   const ROUND_INTRO_AUDIO_FALLBACK_FRAMES = 165;
+  const DASH_SPEED = 9.8;
+  const AIR_DASH_SPEED = 10.4;
+  const DASH_DURATION_FRAMES = 13;
+  const DASH_COOLDOWN_FRAMES = 24;
+  const FIXED_TIMESTEP_MS = 1000 / 60;
+  const MAX_FRAME_DELTA_MS = 1000 / 12;
+  const MAX_UPDATE_STEPS = 5;
+  const MOBILE_FIGHT_RENDER_SCALE_LANDSCAPE = 0.72;
+  const MOBILE_FIGHT_RENDER_SCALE_PORTRAIT = 0.8;
 
   const keys = {};
   const assets = {};
@@ -165,6 +176,12 @@ const mobileMenuButton = document.getElementById("mobileMenuButton");
     active: false
   };
 
+  const renderState = {
+    scale: 1,
+    width: LOGICAL_WIDTH,
+    height: LOGICAL_HEIGHT
+  };
+
   const inputMode = {
     forceDesktop: false,
     lastPointerType: "mouse"
@@ -172,6 +189,32 @@ const mobileMenuButton = document.getElementById("mobileMenuButton");
 
   const audioState = {
     userActivated: false
+  };
+
+  const vrState = {
+    supported: false,
+    supportChecked: false,
+    active: false,
+    session: null,
+    refSpace: null,
+    gl: null,
+    layer: null,
+    canvas: null,
+    program: null,
+    positionBuffer: null,
+    uvBuffer: null,
+    indexBuffer: null,
+    texture: null,
+    textureWidth: 0,
+    textureHeight: 0,
+    attributes: null,
+    uniforms: null,
+    modelMatrix: null
+  };
+
+  const loopState = {
+    lastFrameTime: 0,
+    accumulator: 0
   };
 
   const touchControls = {
@@ -309,6 +352,20 @@ const mobileMenuButton = document.getElementById("mobileMenuButton");
     }
   ];
 
+  characters.forEach((char) => {
+    if (!char.sprites.dash) {
+      char.sprites.dash = char.sprites.run || char.sprites.walk || char.sprites.idle;
+    }
+
+    if (!char.anim.dash) {
+      const baseAnim = char.anim.run || char.anim.walk || char.anim.idle || { frames: 1, speed: 0.2 };
+      char.anim.dash = {
+        ...baseAnim,
+        speed: Math.max((baseAnim.speed || 0.18) * 1.65, 0.28)
+      };
+    }
+  });
+
 const stage = {
   background: "mapa.png",
   width: LOGICAL_WIDTH,
@@ -354,7 +411,12 @@ const stage = {
       aiAttackCooldown: 0,
       aiJumpCooldown: 0,
       aiMoveSpeed: 0,
-      aiStrafeBias: 0
+      aiStrafeBias: 0,
+      dashTimer: 0,
+      dashCooldown: 0,
+      dashDirection: 0,
+      airDashUsed: false,
+      dashBurstTimer: 0
     };
   }
 
@@ -394,6 +456,10 @@ const stage = {
   }
 
 function setScreen(name) {
+  if (name !== "fight" && vrState.active) {
+    endVrSession();
+  }
+
   if (name !== "select") {
     stopCpuRoulette(name === "menu");
   } else {
@@ -412,7 +478,10 @@ function setScreen(name) {
   menuScreen.classList.toggle("active", name === "menu");
   selectScreen.classList.toggle("active", name === "select");
   fightScreen.classList.toggle("active", name === "fight");
+  loopState.lastFrameTime = 0;
+  loopState.accumulator = 0;
   syncMobileUi();
+  updateVrButtonState();
   focusGameSurface();
 }
 
@@ -626,6 +695,7 @@ function shouldForceDesktopModeForKey(key) {
     "l",
     " ",
     "shift",
+    "control",
     "arrowup",
     "arrowdown",
     "arrowleft",
@@ -665,6 +735,38 @@ function isShortMobileViewport() {
   return mobileMode.active && window.innerHeight <= 560;
 }
 
+function isMobilePerformanceMode() {
+  return mobileMode.active;
+}
+
+function getTargetRenderScale() {
+  if (!mobileMode.active) {
+    return 1;
+  }
+
+  return isLandscapeViewport()
+    ? MOBILE_FIGHT_RENDER_SCALE_LANDSCAPE
+    : MOBILE_FIGHT_RENDER_SCALE_PORTRAIT;
+}
+
+function syncCanvasResolution(force = false) {
+  const scale = getTargetRenderScale();
+  const nextWidth = Math.max(1, Math.round(LOGICAL_WIDTH * scale));
+  const nextHeight = Math.max(1, Math.round(LOGICAL_HEIGHT * scale));
+
+  if (!force && renderState.width === nextWidth && renderState.height === nextHeight) {
+    return;
+  }
+
+  renderState.scale = scale;
+  renderState.width = nextWidth;
+  renderState.height = nextHeight;
+  canvas.width = nextWidth;
+  canvas.height = nextHeight;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+}
+
 function updateJoystickVisual() {
   if (!mobileJoystickThumb || !mobileJoystickArea) return;
 
@@ -688,6 +790,7 @@ function resetTouchControls() {
     mobileAttack2Button,
     mobileAttack3Button,
     mobileBlockButton,
+    mobileDashButton,
     mobileMenuButton
   ].forEach((button) => button?.classList.remove("is-pressed"));
 }
@@ -698,6 +801,7 @@ function syncMobileUi() {
   document.body.classList.toggle("mobile-landscape", mobileMode.active && isLandscapeViewport());
   document.body.classList.toggle("mobile-short", isShortMobileViewport());
   document.body.classList.toggle("fight-touch-active", mobileMode.active && gameState.screen === "fight");
+  syncCanvasResolution();
 
   if (mobileControls) {
     const visible = mobileMode.active && gameState.screen === "fight";
@@ -765,6 +869,11 @@ function triggerTouchCombatAction(action) {
 
   if (action === "jump") {
     triggerPlayerJump();
+    return;
+  }
+
+  if (action === "dash") {
+    triggerPlayerDashFromInput();
     return;
   }
 
@@ -1049,6 +1158,94 @@ function drawSpriteFrame(renderCtx, img, frameMeta, dx, dy, dw, dh, facing = 1) 
   renderCtx.restore();
 }
 
+function drawDashTrail(fighter, img, frameMeta, dx, dy, dw, dh) {
+  if (!isDashActive(fighter) && fighter.dashBurstTimer <= 0) return;
+
+  const reducedEffects = isMobilePerformanceMode();
+  const direction = fighter.dashDirection || fighter.facing || 1;
+  const strength = Math.max(
+    fighter.dashTimer / DASH_DURATION_FRAMES,
+    fighter.dashBurstTimer / 6
+  );
+  const trailColor =
+    fighter.characterId === "arcanist"
+      ? "255, 152, 92"
+      : fighter === player
+        ? "110, 215, 255"
+        : "255, 116, 110";
+
+  ctx.save();
+  ctx.globalCompositeOperation = reducedEffects ? "source-over" : "lighter";
+
+  if (!reducedEffects) {
+    const burstStrength = fighter.dashBurstTimer > 0 ? fighter.dashBurstTimer / 6 : 0;
+    const coreX = direction === 1 ? dx + dw * 0.14 : dx + dw * 0.86;
+    const burstGradient = ctx.createRadialGradient(
+      coreX,
+      dy + dh * 0.56,
+      6,
+      coreX,
+      dy + dh * 0.56,
+      42 + burstStrength * 36
+    );
+    burstGradient.addColorStop(0, `rgba(${trailColor}, ${0.24 + burstStrength * 0.2})`);
+    burstGradient.addColorStop(0.55, `rgba(${trailColor}, ${0.11 * strength})`);
+    burstGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = burstGradient;
+    ctx.beginPath();
+    ctx.ellipse(coreX, dy + dh * 0.56, 48 + burstStrength * 34, 18 + burstStrength * 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const gradient = ctx.createLinearGradient(
+    dx + (direction === 1 ? dw : 0),
+    dy + dh * 0.48,
+    dx - direction * ((reducedEffects ? 54 : 72) + strength * (reducedEffects ? 22 : 34)),
+    dy + dh * 0.48
+  );
+  gradient.addColorStop(0, `rgba(${trailColor}, ${(reducedEffects ? 0.16 : 0.2) * strength})`);
+  gradient.addColorStop(0.4, `rgba(${trailColor}, ${(reducedEffects ? 0.08 : 0.12) * strength})`);
+  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(dx - 20, dy + dh * 0.24, dw + 40, dh * 0.48);
+
+  if (!reducedEffects) {
+    const groundY = dy + dh * 0.93;
+    const floorGradient = ctx.createLinearGradient(
+      dx + (direction === 1 ? dw * 0.2 : dw * 0.8),
+      groundY,
+      dx - direction * (88 + strength * 36),
+      groundY
+    );
+    floorGradient.addColorStop(0, `rgba(${trailColor}, ${0.18 * strength})`);
+    floorGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = floorGradient;
+    ctx.fillRect(dx - 12, groundY - 6, dw + 24, 10);
+  }
+
+  const ghostCount = reducedEffects ? 2 : 4;
+  for (let i = 1; i <= ghostCount; i++) {
+    const ghostScale = 1 - i * 0.04;
+    const ghostW = dw * ghostScale;
+    const ghostH = dh * (1 - i * 0.02);
+    const ghostX = dx - direction * i * (reducedEffects ? 14 + i * 4 : 18 + i * 6);
+    const ghostY = dy + i * 1.5;
+    ctx.globalAlpha = Math.max(0, ((reducedEffects ? 0.18 : 0.24) - i * 0.04) * strength);
+    drawSpriteFrame(
+      ctx,
+      img,
+      frameMeta,
+      ghostX,
+      ghostY,
+      ghostW,
+      ghostH,
+      fighter.facing
+    );
+  }
+
+  ctx.restore();
+}
+
   function setState(fighter, newState, force = false) {
     if (fighter.state !== newState || force) {
       fighter.state = newState;
@@ -1058,8 +1255,23 @@ function drawSpriteFrame(renderCtx, img, frameMeta, dx, dy, dw, dh, facing = 1) 
     }
   }
 
+  function isDashActive(fighter) {
+    return fighter.dashTimer > 0;
+  }
+
+  function cancelDash(fighter, preserveVelocity = false) {
+    fighter.dashTimer = 0;
+    fighter.dashDirection = 0;
+    fighter.dashBurstTimer = 0;
+
+    if (!preserveVelocity) {
+      fighter.vx *= 0.4;
+      if (Math.abs(fighter.vx) < 0.05) fighter.vx = 0;
+    }
+  }
+
   function canAttack(fighter) {
-    return !fighter.isDead && !fighter.attackLocked && !fighter.isBlocking && !roundOver && !matchOver && !deathFlow.active && !roundIntro.active;
+    return !fighter.isDead && !fighter.attackLocked && !fighter.isBlocking && !isDashActive(fighter) && !roundOver && !matchOver && !deathFlow.active && !roundIntro.active;
   }
 
   function resetDeathFlow() {
@@ -1108,6 +1320,11 @@ function drawSpriteFrame(renderCtx, img, frameMeta, dx, dy, dw, dh, facing = 1) 
   fighter.aiJumpCooldown = 0;
   fighter.aiMoveSpeed = 0;
   fighter.aiStrafeBias = Math.random() < 0.5 ? -1 : 1;
+  fighter.dashTimer = 0;
+  fighter.dashCooldown = 0;
+  fighter.dashDirection = 0;
+  fighter.airDashUsed = false;
+  fighter.dashBurstTimer = 0;
 }
 
   function getEnemyCharacterForSelection() {
@@ -1370,8 +1587,9 @@ function nextRound() {
   drawShowcaseCharacter(enemyPreviewCanvas, cpuChar, -1, previewAnimationTime);
 }
 
-function animateCharacterSelectShowcase() {
-  previewAnimationTime += 1;
+function animateCharacterSelectShowcase(deltaMs = FIXED_TIMESTEP_MS) {
+  const stepDelta = Math.max(0, Math.min(2, (deltaMs / FIXED_TIMESTEP_MS) || 1));
+  previewAnimationTime += stepDelta;
   const playerChar = selectedCharacter || characters[0];
   const cpuChar = getCpuPreviewCharacter();
 
@@ -1452,6 +1670,369 @@ function runCpuSelectionRoulette() {
     }
   }
 
+  function updateVrButtonState() {
+    if (!vrToggleButton) return;
+
+    vrToggleButton.classList.toggle("is-active", vrState.active);
+
+    if (vrState.active) {
+      vrToggleButton.disabled = false;
+      vrToggleButton.textContent = "Sair RV";
+      return;
+    }
+
+    if (!vrState.supportChecked) {
+      vrToggleButton.disabled = true;
+      vrToggleButton.textContent = "Verificando RV";
+      return;
+    }
+
+    if (!vrState.supported) {
+      vrToggleButton.disabled = true;
+      vrToggleButton.textContent = "RV indisponivel";
+      return;
+    }
+
+    if (gameState.screen !== "fight") {
+      vrToggleButton.disabled = true;
+      vrToggleButton.textContent = "RV no combate";
+      return;
+    }
+
+    vrToggleButton.disabled = false;
+    vrToggleButton.textContent = "Entrar RV";
+  }
+
+  async function detectVrSupport() {
+    vrState.supportChecked = true;
+    vrState.supported = false;
+
+    if (!window.isSecureContext || !("xr" in navigator) || typeof navigator.xr?.isSessionSupported !== "function") {
+      updateVrButtonState();
+      return;
+    }
+
+    try {
+      vrState.supported = await navigator.xr.isSessionSupported("immersive-vr");
+    } catch {
+      vrState.supported = false;
+    }
+
+    updateVrButtonState();
+  }
+
+  function createVrShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    if (!shader) return null;
+
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      gl.deleteShader(shader);
+      return null;
+    }
+
+    return shader;
+  }
+
+  function createVrProgram(gl) {
+    const vertexShader = createVrShader(
+      gl,
+      gl.VERTEX_SHADER,
+      `
+      attribute vec3 aPosition;
+      attribute vec2 aUv;
+      uniform mat4 uProjectionMatrix;
+      uniform mat4 uViewMatrix;
+      uniform mat4 uModelMatrix;
+      varying vec2 vUv;
+
+      void main() {
+        vUv = aUv;
+        gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);
+      }
+      `
+    );
+    const fragmentShader = createVrShader(
+      gl,
+      gl.FRAGMENT_SHADER,
+      `
+      precision mediump float;
+      varying vec2 vUv;
+      uniform sampler2D uTexture;
+
+      void main() {
+        gl_FragColor = texture2D(uTexture, vUv);
+      }
+      `
+    );
+
+    if (!vertexShader || !fragmentShader) {
+      if (vertexShader) gl.deleteShader(vertexShader);
+      if (fragmentShader) gl.deleteShader(fragmentShader);
+      return null;
+    }
+
+    const program = gl.createProgram();
+    if (!program) {
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      return null;
+    }
+
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      gl.deleteProgram(program);
+      return null;
+    }
+
+    return program;
+  }
+
+  function createVrScreenModelMatrix() {
+    const screenWidth = 3.2;
+    const screenHeight = screenWidth * (LOGICAL_HEIGHT / LOGICAL_WIDTH);
+
+    return new Float32Array([
+      screenWidth / 2, 0, 0, 0,
+      0, screenHeight / 2, 0, 0,
+      0, 0, 1, 0,
+      0, 1.55, -2.5, 1
+    ]);
+  }
+
+  function destroyVrRenderer() {
+    const gl = vrState.gl;
+    if (gl) {
+      if (vrState.texture) gl.deleteTexture(vrState.texture);
+      if (vrState.positionBuffer) gl.deleteBuffer(vrState.positionBuffer);
+      if (vrState.uvBuffer) gl.deleteBuffer(vrState.uvBuffer);
+      if (vrState.indexBuffer) gl.deleteBuffer(vrState.indexBuffer);
+      if (vrState.program) gl.deleteProgram(vrState.program);
+    }
+
+    vrState.gl = null;
+    vrState.layer = null;
+    vrState.canvas = null;
+    vrState.program = null;
+    vrState.positionBuffer = null;
+    vrState.uvBuffer = null;
+    vrState.indexBuffer = null;
+    vrState.texture = null;
+    vrState.textureWidth = 0;
+    vrState.textureHeight = 0;
+    vrState.attributes = null;
+    vrState.uniforms = null;
+    vrState.modelMatrix = null;
+  }
+
+  function initVrRenderer(gl) {
+    const program = createVrProgram(gl);
+    if (!program) {
+      throw new Error("Nao foi possivel criar o renderer RV.");
+    }
+
+    const positions = new Float32Array([
+      -1, -1, 0,
+       1, -1, 0,
+       1,  1, 0,
+      -1,  1, 0
+    ]);
+    const uvs = new Float32Array([
+      0, 1,
+      1, 1,
+      1, 0,
+      0, 0
+    ]);
+    const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+
+    const positionBuffer = gl.createBuffer();
+    const uvBuffer = gl.createBuffer();
+    const indexBuffer = gl.createBuffer();
+    const texture = gl.createTexture();
+
+    if (!positionBuffer || !uvBuffer || !indexBuffer || !texture) {
+      throw new Error("Nao foi possivel preparar os buffers RV.");
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+    vrState.program = program;
+    vrState.positionBuffer = positionBuffer;
+    vrState.uvBuffer = uvBuffer;
+    vrState.indexBuffer = indexBuffer;
+    vrState.texture = texture;
+    vrState.attributes = {
+      position: gl.getAttribLocation(program, "aPosition"),
+      uv: gl.getAttribLocation(program, "aUv")
+    };
+    vrState.uniforms = {
+      projection: gl.getUniformLocation(program, "uProjectionMatrix"),
+      view: gl.getUniformLocation(program, "uViewMatrix"),
+      model: gl.getUniformLocation(program, "uModelMatrix"),
+      texture: gl.getUniformLocation(program, "uTexture")
+    };
+    vrState.modelMatrix = createVrScreenModelMatrix();
+  }
+
+  function updateVrTexture() {
+    const gl = vrState.gl;
+    const texture = vrState.texture;
+    if (!gl || !texture) return;
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    if (vrState.textureWidth !== canvas.width || vrState.textureHeight !== canvas.height) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+      vrState.textureWidth = canvas.width;
+      vrState.textureHeight = canvas.height;
+      return;
+    }
+
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  }
+
+  function renderVrFrame(time, frame) {
+    const session = frame.session;
+    session.requestAnimationFrame(renderVrFrame);
+
+    const pose = frame.getViewerPose(vrState.refSpace);
+    if (!pose || !vrState.gl || !vrState.program || !vrState.layer) {
+      return;
+    }
+
+    const gl = vrState.gl;
+    updateVrTexture();
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, vrState.layer.framebuffer);
+    gl.enable(gl.DEPTH_TEST);
+    gl.clearColor(0.02, 0.04, 0.08, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(vrState.program);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, vrState.positionBuffer);
+    gl.enableVertexAttribArray(vrState.attributes.position);
+    gl.vertexAttribPointer(vrState.attributes.position, 3, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, vrState.uvBuffer);
+    gl.enableVertexAttribArray(vrState.attributes.uv);
+    gl.vertexAttribPointer(vrState.attributes.uv, 2, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vrState.indexBuffer);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, vrState.texture);
+    gl.uniform1i(vrState.uniforms.texture, 0);
+    gl.uniformMatrix4fv(vrState.uniforms.model, false, vrState.modelMatrix);
+
+    for (const view of pose.views) {
+      const viewport = vrState.layer.getViewport(view);
+      gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+      gl.uniformMatrix4fv(vrState.uniforms.projection, false, view.projectionMatrix);
+      gl.uniformMatrix4fv(vrState.uniforms.view, false, view.transform.inverse.matrix);
+      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+    }
+  }
+
+  function handleVrSessionEnd() {
+    vrState.active = false;
+    vrState.session = null;
+    vrState.refSpace = null;
+    destroyVrRenderer();
+    updateVrButtonState();
+  }
+
+  async function endVrSession() {
+    if (!vrState.session) {
+      handleVrSessionEnd();
+      return;
+    }
+
+    const session = vrState.session;
+    vrState.session = null;
+
+    try {
+      await session.end();
+    } catch {}
+
+    handleVrSessionEnd();
+  }
+
+  async function startVrSession() {
+    if (!vrState.supported || vrState.active || gameState.screen !== "fight") {
+      updateVrButtonState();
+      return;
+    }
+
+    if (!window.isSecureContext || !navigator.xr) {
+      vrState.supported = false;
+      updateVrButtonState();
+      return;
+    }
+
+    try {
+      const xrCanvas = document.createElement("canvas");
+      const gl =
+        xrCanvas.getContext("webgl", { alpha: false, antialias: true, xrCompatible: true }) ||
+        xrCanvas.getContext("experimental-webgl", { alpha: false, antialias: true, xrCompatible: true });
+
+      if (!gl) {
+        throw new Error("WebGL nao disponivel para RV.");
+      }
+
+      if (typeof gl.makeXRCompatible === "function") {
+        await gl.makeXRCompatible();
+      }
+
+      const session = await navigator.xr.requestSession("immersive-vr", {
+        optionalFeatures: ["local-floor"]
+      });
+      const layer = new XRWebGLLayer(session, gl, { alpha: false, antialias: true });
+
+      session.addEventListener("end", handleVrSessionEnd);
+      session.updateRenderState({ baseLayer: layer });
+
+      let refSpace = null;
+      try {
+        refSpace = await session.requestReferenceSpace("local-floor");
+      } catch {
+        refSpace = await session.requestReferenceSpace("local");
+      }
+
+      vrState.session = session;
+      vrState.refSpace = refSpace;
+      vrState.gl = gl;
+      vrState.layer = layer;
+      vrState.canvas = xrCanvas;
+      vrState.active = true;
+
+      initVrRenderer(gl);
+      updateVrButtonState();
+      session.requestAnimationFrame(renderVrFrame);
+    } catch {
+      handleVrSessionEnd();
+    }
+  }
+
   function handleGameKeyDown(e) {
     if (e.__shadowProtocolHandled) return;
     e.__shadowProtocolHandled = true;
@@ -1524,6 +2105,11 @@ function runCpuSelectionRoulette() {
       return;
     }
 
+    if (!e.repeat && key === "control") {
+      triggerPlayerDashFromInput();
+      return;
+    }
+
     if (
       (key === " " || key === "w" || key === "arrowup") &&
       player.onGround &&
@@ -1565,6 +2151,8 @@ function runCpuSelectionRoulette() {
 
   window.addEventListener("blur", () => {
     clearKeys();
+    loopState.lastFrameTime = 0;
+    loopState.accumulator = 0;
   });
 
   window.addEventListener("pointerdown", (event) => {
@@ -1667,6 +2255,10 @@ function runCpuSelectionRoulette() {
     }
   );
 
+  bindTouchButton(mobileDashButton, () => {
+    triggerTouchCombatAction("dash");
+  });
+
   bindTouchButton(mobileMenuButton, () => {
     triggerTouchCombatAction("menu");
   });
@@ -1705,6 +2297,7 @@ function runCpuSelectionRoulette() {
       fighter.y = FLOOR_Y - fighter.height;
       fighter.vy = 0;
       fighter.onGround = true;
+      fighter.airDashUsed = false;
     } else {
       fighter.onGround = false;
     }
@@ -1764,7 +2357,7 @@ function runCpuSelectionRoulette() {
   }
 
   function canAutoTurn(fighter) {
-    return !fighter.isBlocking && !fighter.attackLocked && !fighter.isDead && fighter.hurtTimer <= 0;
+    return !fighter.isBlocking && !fighter.attackLocked && !fighter.isDead && fighter.hurtTimer <= 0 && !isDashActive(fighter);
   }
 
   function updateFacing() {
@@ -1780,6 +2373,7 @@ function runCpuSelectionRoulette() {
     player.isBlocking =
       !player.isDead &&
       !player.attackLocked &&
+      !isDashActive(player) &&
       player.onGround &&
       !deathFlow.active &&
       (keys["s"] || keys["arrowdown"] || touchControls.blockPressed);
@@ -1794,6 +2388,7 @@ function runCpuSelectionRoulette() {
     const shouldEnemyBlock =
       !enemy.isDead &&
       !enemy.attackLocked &&
+      !isDashActive(enemy) &&
       enemy.onGround &&
       !deathFlow.active &&
       dist < 120 &&
@@ -1812,8 +2407,13 @@ function runCpuSelectionRoulette() {
 
   function updatePlayerMovement() {
     if (player.isDead || player.isBlocking || deathFlow.active) {
+      cancelDash(player, true);
       player.vx *= 0.84;
       if (Math.abs(player.vx) < 0.05) player.vx = 0;
+      return;
+    }
+
+    if (updateDashMovement(player, DASH_SPEED)) {
       return;
     }
 
@@ -1840,7 +2440,7 @@ function runCpuSelectionRoulette() {
   }
 
   function triggerJump(fighter, horizontalBoost = 0) {
-    if (!fighter.onGround || fighter.attackLocked || fighter.isBlocking || fighter.isDead) return false;
+    if (!fighter.onGround || fighter.attackLocked || fighter.isBlocking || fighter.isDead || isDashActive(fighter)) return false;
 
     fighter.vy = JUMP_FORCE;
     fighter.vx += horizontalBoost;
@@ -1860,6 +2460,75 @@ function runCpuSelectionRoulette() {
     triggerJump(player);
   }
 
+  function updateDashMovement(fighter, dashSpeed = DASH_SPEED) {
+    if (fighter.dashCooldown > 0) {
+      fighter.dashCooldown--;
+    }
+
+    if (fighter.dashBurstTimer > 0) {
+      fighter.dashBurstTimer--;
+    }
+
+    if (!isDashActive(fighter)) {
+      return false;
+    }
+
+    const dashProgress = fighter.dashTimer / DASH_DURATION_FRAMES;
+    const activeDashSpeed = !fighter.onGround && fighter.airDashUsed ? AIR_DASH_SPEED : dashSpeed;
+    fighter.vx = fighter.dashDirection * activeDashSpeed * (0.84 + dashProgress * 0.28);
+    fighter.dashTimer--;
+    setState(fighter, "dash");
+
+    if (fighter.dashTimer <= 0) {
+      fighter.dashTimer = 0;
+      fighter.dashDirection = 0;
+      fighter.vx *= 0.82;
+    }
+
+    return true;
+  }
+
+  function triggerDash(fighter, direction, dashSpeed = DASH_SPEED) {
+    const canAirDash = fighter === player && !fighter.onGround && !fighter.airDashUsed;
+
+    if (
+      !direction ||
+      fighter.isDead ||
+      fighter.isBlocking ||
+      fighter.attackLocked ||
+      fighter.hurtTimer > 0 ||
+      isDashActive(fighter) ||
+      fighter.dashCooldown > 0 ||
+      (!fighter.onGround && !canAirDash) ||
+      roundOver ||
+      matchOver ||
+      deathFlow.active ||
+      roundIntro.active
+    ) {
+      return false;
+    }
+
+    fighter.dashDirection = direction;
+    fighter.dashTimer = DASH_DURATION_FRAMES;
+    fighter.dashCooldown = DASH_COOLDOWN_FRAMES;
+    fighter.dashBurstTimer = 6;
+    fighter.vx = direction * (canAirDash ? AIR_DASH_SPEED : dashSpeed);
+
+    if (canAirDash) {
+      fighter.airDashUsed = true;
+      fighter.vy = Math.min(fighter.vy * 0.25, 0.8);
+    }
+
+    setState(fighter, "dash", true);
+    return true;
+  }
+
+  function triggerPlayerDashFromInput(direction = 0) {
+    const { left, right } = getPlayerInputState();
+    const intendedDirection = direction || (right ? 1 : 0) - (left ? 1 : 0) || player.facing;
+    return triggerDash(player, intendedDirection, DASH_SPEED);
+  }
+
   function approachValue(current, target, step) {
     if (current < target) return Math.min(current + step, target);
     if (current > target) return Math.max(current - step, target);
@@ -1868,6 +2537,7 @@ function runCpuSelectionRoulette() {
 
   function updateEnemyAI() {
     if (enemy.isDead || enemy.isBlocking || deathFlow.active) {
+      cancelDash(enemy, true);
       enemy.vx *= 0.84;
       if (Math.abs(enemy.vx) < 0.05) enemy.vx = 0;
       return;
@@ -2046,6 +2716,7 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
   syncFightHud();
 
     const kb = blocked ? knockback * 0.32 : knockback;
+    cancelDash(target, true);
     target.vx = attacker.x < target.x ? kb : -kb;
 
     if (!blocked) {
@@ -2126,14 +2797,16 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
 
   function updateStateMachine() {
     if (!player.attackLocked && !player.isDead && !player.isBlocking && player.hurtTimer <= 0) {
-      if (!player.onGround) setState(player, "jump");
+      if (isDashActive(player)) setState(player, "dash");
+      else if (!player.onGround) setState(player, "jump");
       else if (Math.abs(player.vx) > 2.8) setState(player, "run");
       else if (Math.abs(player.vx) > 0.15) setState(player, "walk");
       else setState(player, "idle");
     }
 
   if (!enemy.attackLocked && !enemy.isDead && !enemy.isBlocking && enemy.hurtTimer <= 0) {
-    if (!enemy.onGround) setState(enemy, "jump");
+    if (isDashActive(enemy)) setState(enemy, "dash");
+    else if (!enemy.onGround) setState(enemy, "jump");
     else if (Math.abs(enemy.vx) > 0.22) setState(enemy, "walk");
     else setState(enemy, "idle");
   }
@@ -2158,7 +2831,7 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
       fighter.frameIndex += 1;
 
       if (fighter.frameIndex >= anim.frames) {
-        if (["idle", "walk", "run", "block"].includes(fighter.state)) {
+        if (["idle", "walk", "run", "dash", "block"].includes(fighter.state)) {
           fighter.frameIndex = 0;
         } else {
           fighter.frameIndex = anim.frames - 1;
@@ -2205,39 +2878,54 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
   }
 
   function drawBackground() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(renderState.scale, 0, 0, renderState.scale, 0, 0);
+    ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const bg = assets[stage.background];
     if (bg) {
-      ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bg, 0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     } else {
       ctx.fillStyle = "#0d1320";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     }
 
     ctx.fillStyle = "rgba(0,0,0,0.18)";
-    ctx.fillRect(0, FLOOR_Y, canvas.width, canvas.height - FLOOR_Y);
+    ctx.fillRect(0, FLOOR_Y, LOGICAL_WIDTH, LOGICAL_HEIGHT - FLOOR_Y);
+
+    if (isMobilePerformanceMode()) {
+      ctx.fillStyle = "rgba(0,0,0,0.16)";
+      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+      return;
+    }
 
     const grad = ctx.createRadialGradient(
-      canvas.width / 2,
-      canvas.height / 2,
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
       120,
-      canvas.width / 2,
-      canvas.height / 2,
-      canvas.width * 0.65
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
+      LOGICAL_WIDTH * 0.65
     );
     grad.addColorStop(0, "rgba(0,0,0,0)");
     grad.addColorStop(1, "rgba(0,0,0,0.48)");
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
   }
 
   function drawFighter(fighter) {
     if (!fighter.spriteSet || !fighter.animSet) return;
 
-    const stateKey = fighter.state in fighter.spriteSet ? fighter.state : "idle";
+    const stateKey =
+      fighter.state in fighter.spriteSet
+        ? fighter.state
+        : fighter.state === "dash"
+          ? "run"
+          : "idle";
     const img = assets[fighter.spriteSet[stateKey]];
-    const anim = fighter.animSet[stateKey];
+    const anim =
+      fighter.animSet[fighter.state] ||
+      fighter.animSet[stateKey] ||
+      fighter.animSet.idle;
 
     if (!img || !anim) return;
 
@@ -2247,11 +2935,15 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
     const frameMeta = getAnimFrameMeta(anim, frameIndex);
     const drawHeight = fighter.characterData?.drawHeight || FRAME_H * SCALE;
     const scale = drawHeight / frameMeta.sh;
-    const dw = frameMeta.sw * scale;
-    const dh = frameMeta.sh * scale;
-    const dx = fighter.x - (dw - fighter.width) / 2;
-    const dy = fighter.y - (dh - fighter.height);
+    const dashVisual = isDashActive(fighter) ? fighter.dashTimer / DASH_DURATION_FRAMES : 0;
+    const stretchX = 1 + dashVisual * 0.16;
+    const stretchY = 1 - dashVisual * 0.08;
+    const dw = frameMeta.sw * scale * stretchX;
+    const dh = frameMeta.sh * scale * stretchY;
+    const dx = fighter.x - (dw - fighter.width) / 2 + fighter.dashDirection * dashVisual * 8;
+    const dy = fighter.y - (dh - fighter.height) + dashVisual * 8;
 
+    drawDashTrail(fighter, img, frameMeta, dx, dy, dw, dh);
     drawSpriteFrame(ctx, img, frameMeta, dx, dy, dw, dh, fighter.facing);
   }
 
@@ -2260,7 +2952,7 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
     const barH = 28;
     const topY = 26;
     const leftX = 28;
-    const rightX = canvas.width - barW - 28;
+    const rightX = LOGICAL_WIDTH - barW - 28;
 
     ctx.fillStyle = "#000";
     ctx.fillRect(leftX - 5, topY - 5, barW + 10, barH + 10);
@@ -2282,16 +2974,99 @@ function applyHitEffects(attacker, target, damage, knockback, blocked) {
     ctx.strokeRect(rightX, topY, barW, barH);
   }
 
+  function drawVrHud() {
+    if (!vrState.active) return;
+
+    const panelY = 18;
+    const panelW = 338;
+    const panelH = 94;
+    const portraitSize = 68;
+    const leftX = 20;
+    const rightX = LOGICAL_WIDTH - panelW - 20;
+    const barWidth = 226;
+    const barHeight = 14;
+    const playerRatio = player.maxHealth ? Math.max(0, player.health / player.maxHealth) : 0;
+    const enemyRatio = enemy.maxHealth ? Math.max(0, enemy.health / enemy.maxHealth) : 0;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(4, 10, 18, 0.76)";
+    ctx.fillRect(leftX, panelY, panelW, panelH);
+    ctx.fillRect(rightX, panelY, panelW, panelH);
+
+    ctx.strokeStyle = "rgba(255, 241, 201, 0.24)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(leftX, panelY, panelW, panelH);
+    ctx.strokeRect(rightX, panelY, panelW, panelH);
+
+    if (playerPortraitCanvas) {
+      ctx.drawImage(playerPortraitCanvas, leftX + 12, panelY + 12, portraitSize, portraitSize);
+    }
+
+    if (enemyPortraitCanvas) {
+      ctx.drawImage(enemyPortraitCanvas, rightX + panelW - portraitSize - 12, panelY + 12, portraitSize, portraitSize);
+    }
+
+    ctx.fillStyle = "#9eb2c9";
+    ctx.font = "700 14px Barlow, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("JOGADOR", leftX + 94, panelY + 24);
+
+    ctx.fillStyle = "#fff1c9";
+    ctx.font = "36px Bebas Neue, Impact, sans-serif";
+    ctx.fillText(player.name || "PLAYER", leftX + 94, panelY + 58);
+
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillRect(leftX + 94, panelY + 68, barWidth, barHeight);
+    ctx.fillStyle = "#74f0cf";
+    ctx.fillRect(leftX + 94, panelY + 68, barWidth * playerRatio, barHeight);
+    ctx.fillStyle = "#d0d9e8";
+    ctx.font = "700 16px Barlow, sans-serif";
+    ctx.fillText(`${player.health} / ${player.maxHealth}`, leftX + 94, panelY + 92);
+
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#9eb2c9";
+    ctx.font = "700 14px Barlow, sans-serif";
+    ctx.fillText("CPU", rightX + panelW - 94, panelY + 24);
+
+    ctx.fillStyle = "#fff1c9";
+    ctx.font = "36px Bebas Neue, Impact, sans-serif";
+    ctx.fillText(enemy.name || "ENEMY", rightX + panelW - 94, panelY + 58);
+
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillRect(rightX + 18, panelY + 68, barWidth, barHeight);
+    ctx.fillStyle = "#ff8f7d";
+    ctx.fillRect(rightX + 18 + barWidth * (1 - enemyRatio), panelY + 68, barWidth * enemyRatio, barHeight);
+    ctx.fillStyle = "#d0d9e8";
+    ctx.font = "700 16px Barlow, sans-serif";
+    ctx.fillText(`${enemy.health} / ${enemy.maxHealth}`, rightX + panelW - 94, panelY + 92);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(4, 10, 18, 0.78)";
+    ctx.fillRect(LOGICAL_WIDTH / 2 - 120, 16, 240, 92);
+    ctx.strokeStyle = "rgba(255, 241, 201, 0.22)";
+    ctx.strokeRect(LOGICAL_WIDTH / 2 - 120, 16, 240, 92);
+    ctx.fillStyle = "#fff1c9";
+    ctx.font = "40px Bebas Neue, Impact, sans-serif";
+    ctx.fillText(`ROUND ${Math.min(gameState.round, 3)}`, LOGICAL_WIDTH / 2, 54);
+    ctx.fillStyle = "#ffd98b";
+    ctx.font = "700 24px Barlow, sans-serif";
+    ctx.fillText(`${gameState.playerWins} x ${gameState.enemyWins}`, LOGICAL_WIDTH / 2, 82);
+    ctx.fillStyle = "#9eb2c9";
+    ctx.font = "700 14px Barlow, sans-serif";
+    ctx.fillText("ESC para menu | RV experimental", LOGICAL_WIDTH / 2, 102);
+    ctx.restore();
+  }
+
 function drawOverlayCard(title, subtitle, scoreText = "") {
     ctx.save();
 
     ctx.fillStyle = "rgba(3, 6, 14, 0.58)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const w = 560;
     const h = 260;
-    const x = canvas.width / 2 - w / 2;
-    const y = canvas.height / 2 - h / 2;
+    const x = LOGICAL_WIDTH / 2 - w / 2;
+    const y = LOGICAL_HEIGHT / 2 - h / 2;
 
     ctx.fillStyle = "rgba(8, 14, 28, 0.92)";
     ctx.fillRect(x, y, w, h);
@@ -2310,20 +3085,21 @@ function drawOverlayCard(title, subtitle, scoreText = "") {
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 40px Arial";
-    ctx.fillText(title, canvas.width / 2, y + 74);
+    ctx.fillText(title, LOGICAL_WIDTH / 2, y + 74);
 
     ctx.fillStyle = "#b8c7e6";
     ctx.font = "20px Arial";
-    ctx.fillText(subtitle, canvas.width / 2, y + 120);
+    ctx.fillText(subtitle, LOGICAL_WIDTH / 2, y + 120);
 
     if (scoreText) {
       ctx.fillStyle = "#eaf2ff";
       ctx.font = "bold 30px Arial";
-      ctx.fillText(scoreText, canvas.width / 2, y + 170);
+      ctx.fillText(scoreText, LOGICAL_WIDTH / 2, y + 170);
     }
 
     ctx.textAlign = "start";
     ctx.restore();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   function drawRoundOverlay() {
@@ -2350,10 +3126,11 @@ function drawOverlayCard(title, subtitle, scoreText = "") {
       );
 
       ctx.save();
+      ctx.setTransform(renderState.scale, 0, 0, renderState.scale, 0, 0);
       ctx.textAlign = "center";
       ctx.fillStyle = "#8fd8ff";
       ctx.font = "18px Arial";
-      ctx.fillText("Use o botão Revanche ou volte ao Menu", canvas.width / 2, canvas.height / 2 + 74);
+      ctx.fillText("Use o botao Revanche ou volte ao Menu", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 + 74);
       ctx.restore();
       return;
     }
@@ -2371,6 +3148,7 @@ function draw() {
   drawHealthBars();
   drawFighter(player);
   drawFighter(enemy);
+  drawVrHud();
   drawRoundOverlay();
 }
 
@@ -2458,15 +3236,40 @@ function draw() {
     processDeathFlow();
   }
 
-  function gameLoop() {
+  function gameLoop(timestamp = 0) {
     if (gameReady) {
+      if (!loopState.lastFrameTime) {
+        loopState.lastFrameTime = timestamp;
+      }
+
+      const rawDelta = timestamp - loopState.lastFrameTime;
+      const frameDelta = Math.max(0, Math.min(MAX_FRAME_DELTA_MS, rawDelta || FIXED_TIMESTEP_MS));
+      loopState.lastFrameTime = timestamp;
+
       if (gameState.screen === "fight") {
-        update();
+        loopState.accumulator += frameDelta;
+
+        let steps = 0;
+        while (loopState.accumulator >= FIXED_TIMESTEP_MS && steps < MAX_UPDATE_STEPS) {
+          update();
+          loopState.accumulator -= FIXED_TIMESTEP_MS;
+          steps++;
+        }
+
+        if (steps >= MAX_UPDATE_STEPS && loopState.accumulator > FIXED_TIMESTEP_MS) {
+          loopState.accumulator = FIXED_TIMESTEP_MS;
+        }
+
         draw();
-      } else if (gameState.screen === "select") {
-        animateCharacterSelectShowcase();
+      } else {
+        loopState.accumulator = 0;
+
+        if (gameState.screen === "select") {
+          animateCharacterSelectShowcase(frameDelta);
+        }
       }
     }
+
     requestAnimationFrame(gameLoop);
   }
 
@@ -2512,6 +3315,19 @@ if (backToMenuFromFightBtn) {
   });
 }
 
+if (vrToggleButton) {
+  vrToggleButton.addEventListener("click", async () => {
+    registerUserInteraction();
+
+    if (vrState.active) {
+      await endVrSession();
+      return;
+    }
+
+    await startVrSession();
+  });
+}
+
 window.addEventListener("resize", syncMobileUi);
 window.addEventListener("orientationchange", syncMobileUi);
 
@@ -2528,6 +3344,8 @@ window.addEventListener("orientationchange", syncMobileUi);
     renderCharacterCards();
     updateUI();
     syncMobileUi();
+    syncCanvasResolution(true);
+    await detectVrSupport();
     setScreen("menu");
     focusGameSurface();
     setMessage("Pronto.");

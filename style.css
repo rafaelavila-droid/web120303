@@ -970,6 +970,42 @@ select {
   letter-spacing: 0.16em;
 }
 
+.vr-toggle-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.vr-toggle-btn {
+  min-width: 136px;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(110, 215, 255, 0.22);
+  background:
+    linear-gradient(180deg, rgba(14, 28, 44, 0.92), rgba(6, 16, 28, 0.92)),
+    rgba(0, 0, 0, 0.22);
+  color: #ecf5ff;
+  font-family: "Bebas Neue", Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.vr-toggle-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.vr-toggle-btn:disabled {
+  opacity: 0.52;
+}
+
+.vr-toggle-btn.is-active {
+  color: #061018;
+  border-color: rgba(255, 223, 152, 0.52);
+  background: linear-gradient(135deg, #ffe39f, #f7b955 52%, #ea7d2b 100%);
+}
+
 .canvas-wrap {
   width: 100vw;
   height: 100vh;
@@ -1119,6 +1155,13 @@ select {
   border-color: rgba(110, 215, 255, 0.26);
 }
 
+.mobile-dash-btn {
+  border-color: rgba(255, 214, 122, 0.28);
+  background:
+    linear-gradient(180deg, rgba(38, 35, 56, 0.94), rgba(14, 12, 24, 0.94)),
+    rgba(0, 0, 0, 0.28);
+}
+
 .mobile-menu-btn {
   border-color: rgba(247, 185, 85, 0.26);
 }
@@ -1180,6 +1223,100 @@ body.mobile-device .mobile-controls.mobile-visible {
 
 body.mobile-device .center-chip {
   font-size: 0.74rem;
+}
+
+body.mobile-device .vr-toggle-row {
+  margin-top: 6px;
+}
+
+body.mobile-device .vr-toggle-btn {
+  min-width: 108px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+}
+
+body.mobile-device .panel-surface {
+  backdrop-filter: none;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
+body.mobile-device .panel-surface::before {
+  opacity: 0.55;
+}
+
+body.mobile-device .menu-overlay,
+body.mobile-device .select-overlay {
+  background:
+    linear-gradient(180deg, rgba(5, 8, 14, 0.16), rgba(4, 8, 14, 0.84)),
+    radial-gradient(circle at 50% 0, rgba(110, 215, 255, 0.08), transparent 26%);
+}
+
+body.mobile-device .scene-grid,
+body.mobile-device .menu-watermark::before,
+body.mobile-device .menu-watermark::after,
+body.mobile-device .select-shell::before {
+  display: none;
+}
+
+body.mobile-device .menu-watermark {
+  background: rgba(6, 12, 20, 0.74);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+  backdrop-filter: none;
+}
+
+body.mobile-device .menu-watermark span {
+  animation: none;
+  filter: none;
+}
+
+body.mobile-device .fighter-showcase,
+body.mobile-device .fighter-showcase.right.cpu-roulette,
+body.mobile-device .character-card,
+body.mobile-device .select-action-btn,
+body.mobile-device .fight-topbar {
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
+}
+
+body.mobile-device .fighter-showcase::after {
+  opacity: 0.42;
+}
+
+body.mobile-device .fighter-showcase.right.cpu-roulette {
+  animation: none;
+}
+
+body.mobile-device .showcase-name,
+body.mobile-device .versus-mark {
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+  filter: none;
+}
+
+body.mobile-device .hud-portrait {
+  filter: none;
+}
+
+body.mobile-device .mobile-joystick::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 10px 20px rgba(0, 0, 0, 0.22);
+  backdrop-filter: none;
+}
+
+body.mobile-device .mobile-joystick-ring {
+  box-shadow: none;
+}
+
+body.mobile-device .mobile-joystick-thumb,
+body.mobile-device .mobile-utility-btn,
+body.mobile-device .mobile-action-btn {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24);
+}
+
+body.mobile-device .mobile-utility-btn.is-pressed,
+body.mobile-device .mobile-action-btn.is-pressed {
+  filter: none;
+  opacity: 0.92;
 }
 
 body.fight-touch-active,
@@ -1641,6 +1778,18 @@ body.fight-touch-active #fightScreen {
 
   body.mobile-landscape .center-chip {
     margin-top: 4px;
+  }
+
+  body.mobile-landscape .vr-toggle-row {
+    margin-top: 4px;
+  }
+
+  body.mobile-landscape .vr-toggle-btn {
+    min-width: 92px;
+    min-height: 26px;
+    padding: 5px 8px;
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
   }
 
   body.mobile-landscape .mobile-controls-left {
