@@ -80,9 +80,6 @@ const vrToggleButton = document.getElementById("vrToggleButton");
   const AIR_DASH_SPEED = 10.4;
   const DASH_DURATION_FRAMES = 13;
   const DASH_COOLDOWN_FRAMES = 24;
-  const FIXED_TIMESTEP_MS = 1000 / 60;
-  const MAX_FRAME_DELTA_MS = 1000 / 12;
-  const MAX_UPDATE_STEPS = 5;
   const MOBILE_FIGHT_RENDER_SCALE_LANDSCAPE = 0.72;
   const MOBILE_FIGHT_RENDER_SCALE_PORTRAIT = 0.8;
 
@@ -210,11 +207,6 @@ const vrToggleButton = document.getElementById("vrToggleButton");
     attributes: null,
     uniforms: null,
     modelMatrix: null
-  };
-
-  const loopState = {
-    lastFrameTime: 0,
-    accumulator: 0
   };
 
   const touchControls = {
@@ -478,8 +470,6 @@ function setScreen(name) {
   menuScreen.classList.toggle("active", name === "menu");
   selectScreen.classList.toggle("active", name === "select");
   fightScreen.classList.toggle("active", name === "fight");
-  loopState.lastFrameTime = 0;
-  loopState.accumulator = 0;
   syncMobileUi();
   updateVrButtonState();
   focusGameSurface();
@@ -1587,9 +1577,8 @@ function nextRound() {
   drawShowcaseCharacter(enemyPreviewCanvas, cpuChar, -1, previewAnimationTime);
 }
 
-function animateCharacterSelectShowcase(deltaMs = FIXED_TIMESTEP_MS) {
-  const stepDelta = Math.max(0, Math.min(2, (deltaMs / FIXED_TIMESTEP_MS) || 1));
-  previewAnimationTime += stepDelta;
+function animateCharacterSelectShowcase() {
+  previewAnimationTime += 1;
   const playerChar = selectedCharacter || characters[0];
   const cpuChar = getCpuPreviewCharacter();
 
@@ -2151,8 +2140,6 @@ function runCpuSelectionRoulette() {
 
   window.addEventListener("blur", () => {
     clearKeys();
-    loopState.lastFrameTime = 0;
-    loopState.accumulator = 0;
   });
 
   window.addEventListener("pointerdown", (event) => {
@@ -3236,40 +3223,15 @@ function draw() {
     processDeathFlow();
   }
 
-  function gameLoop(timestamp = 0) {
+  function gameLoop() {
     if (gameReady) {
-      if (!loopState.lastFrameTime) {
-        loopState.lastFrameTime = timestamp;
-      }
-
-      const rawDelta = timestamp - loopState.lastFrameTime;
-      const frameDelta = Math.max(0, Math.min(MAX_FRAME_DELTA_MS, rawDelta || FIXED_TIMESTEP_MS));
-      loopState.lastFrameTime = timestamp;
-
       if (gameState.screen === "fight") {
-        loopState.accumulator += frameDelta;
-
-        let steps = 0;
-        while (loopState.accumulator >= FIXED_TIMESTEP_MS && steps < MAX_UPDATE_STEPS) {
-          update();
-          loopState.accumulator -= FIXED_TIMESTEP_MS;
-          steps++;
-        }
-
-        if (steps >= MAX_UPDATE_STEPS && loopState.accumulator > FIXED_TIMESTEP_MS) {
-          loopState.accumulator = FIXED_TIMESTEP_MS;
-        }
-
+        update();
         draw();
-      } else {
-        loopState.accumulator = 0;
-
-        if (gameState.screen === "select") {
-          animateCharacterSelectShowcase(frameDelta);
-        }
+      } else if (gameState.screen === "select") {
+        animateCharacterSelectShowcase();
       }
     }
-
     requestAnimationFrame(gameLoop);
   }
 
